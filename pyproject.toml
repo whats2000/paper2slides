@@ -1,0 +1,19 @@
+[project]
+name = "paper2slides"
+version = "0.1.0"
+description = "Transform any arXiv papers into slides using LLMs!"
+authors = [{name = "takashiishida"}]
+license = "MIT"
+requires-python = ">=3.10"
+dependencies = [
+    "requests",
+    "arxiv",
+    "openai",
+    "arxiv-to-prompt>=0.2.0",
+    "PyYAML>=6.0",
+    "PyMuPDF",
+    "pypdf",
+    "python-dotenv",
+    "unidecode",
+    "streamlit"
+]
