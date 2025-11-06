@@ -3,7 +3,14 @@ import os
 import time
 import arxiv
 import re
-from core import generate_slides, compile_latex, search_arxiv, edit_slides
+from core import (
+    generate_slides,
+    generate_slides_from_pdf,
+    compile_latex,
+    search_arxiv,
+    edit_slides,
+    generate_pdf_id,
+)
 import base64
 import logging
 import subprocess
@@ -11,6 +18,7 @@ import platform
 from pathlib import Path
 from dotenv import load_dotenv
 import fitz  # PyMuPDF
+import tempfile
 
 
 def display_pdf(file_path):
@@ -68,21 +76,40 @@ def get_arxiv_id_from_query(query: str) -> str | None:
     return None
 
 
-def run_generate_step(arxiv_id: str, api_key: str, model_name: str) -> bool:
+def run_generate_step(paper_id: str, api_key: str, model_name: str, pdf_path: str | None = None) -> bool:
     """
-    Step 1: Generate slides from arXiv paper (equivalent to cmd_generate)
+    Step 1: Generate slides from arXiv paper or local PDF
+    
+    Args:
+        paper_id: arXiv ID or generated ID for uploaded PDF
+        api_key: API key for LLM
+        model_name: Model name
+        pdf_path: Path to uploaded PDF file (None for arXiv papers)
     """
     logging.info("=" * 60)
-    logging.info("GENERATING SLIDES FROM ARXIV PAPER")
+    if pdf_path:
+        logging.info("GENERATING SLIDES FROM UPLOADED PDF")
+    else:
+        logging.info("GENERATING SLIDES FROM ARXIV PAPER")
     logging.info("=" * 60)
 
-    success = generate_slides(
-        arxiv_id=arxiv_id,
-        use_linter=False,
-        use_pdfcrop=False,
-        api_key=api_key,
-        model_name=model_name,
-    )
+    if pdf_path:
+        success = generate_slides_from_pdf(
+            pdf_path=pdf_path,
+            paper_id=paper_id,
+            use_linter=False,
+            use_pdfcrop=False,
+            api_key=api_key,
+            model_name=model_name,
+        )
+    else:
+        success = generate_slides(
+            arxiv_id=paper_id,
+            use_linter=False,
+            use_pdfcrop=False,
+            api_key=api_key,
+            model_name=model_name,
+        )
 
     if success:
         logging.info("✓ Slide generation completed successfully")
@@ -92,7 +119,7 @@ def run_generate_step(arxiv_id: str, api_key: str, model_name: str) -> bool:
     return success
 
 
-def run_compile_step(arxiv_id: str, pdflatex_path: str) -> bool:
+def run_compile_step(paper_id: str, pdflatex_path: str) -> bool:
     """
     Step 2: Compile LaTeX slides to PDF (equivalent to cmd_compile)
     """
@@ -102,7 +129,7 @@ def run_compile_step(arxiv_id: str, pdflatex_path: str) -> bool:
 
     success = compile_latex(
         tex_file_path="slides.tex",
-        output_directory=f"source/{arxiv_id}/",
+        output_directory=f"source/{paper_id}/",
         pdflatex_path=pdflatex_path,
     )
 
@@ -115,31 +142,39 @@ def run_compile_step(arxiv_id: str, pdflatex_path: str) -> bool:
 
 
 def run_full_pipeline(
-    arxiv_id: str,
+    paper_id: str,
     api_key: str,
     model_name: str,
     pdflatex_path: str,
+    pdf_path: str | None = None,
 ) -> bool:
     """
     Full pipeline: generate + compile (equivalent to cmd_all, minus opening PDF)
+    
+    Args:
+        paper_id: arXiv ID or generated ID for uploaded PDF
+        api_key: API key for LLM
+        model_name: Model name
+        pdflatex_path: Path to pdflatex compiler
+        pdf_path: Path to uploaded PDF file (None for arXiv papers)
     """
     logging.info("=" * 60)
     logging.info("RUNNING FULL PAPER2SLIDES PIPELINE")
     logging.info("=" * 60)
 
     # Step 1: Generate slides
-    if not run_generate_step(arxiv_id, api_key, model_name):
+    if not run_generate_step(paper_id, api_key, model_name, pdf_path):
         logging.error("Pipeline failed at slide generation step")
         return False
 
     # Step 2: Compile to PDF
-    if not run_compile_step(arxiv_id, pdflatex_path):
+    if not run_compile_step(paper_id, pdflatex_path):
         logging.error("Pipeline failed at PDF compilation step")
         return False
 
     # Step 3: Verify PDF exists (we don't auto-open in webui)
-    pdf_path = f"source/{arxiv_id}/slides.pdf"
-    if os.path.exists(pdf_path):
+    pdf_output_path = f"source/{paper_id}/slides.pdf"
+    if os.path.exists(pdf_output_path):
         logging.info("=" * 60)
         logging.info("✓ PIPELINE COMPLETED SUCCESSFULLY")
         logging.info("=" * 60)
@@ -159,6 +194,12 @@ def main():
         st.session_state.messages = []
     if "arxiv_id" not in st.session_state:
         st.session_state.arxiv_id = None
+    if "paper_id" not in st.session_state:
+        st.session_state.paper_id = None
+    if "uploaded_pdf_path" not in st.session_state:
+        st.session_state.uploaded_pdf_path = None
+    if "input_mode" not in st.session_state:
+        st.session_state.input_mode = "arxiv"  # "arxiv" or "upload"
     if "pdf_path" not in st.session_state:
         st.session_state.pdf_path = None
     if "pipeline_status" not in st.session_state:
@@ -190,8 +231,80 @@ def main():
 
     # Sidebar for paper search and settings
     with st.sidebar:
-        st.header("Search Paper")
-        query = st.text_input("Enter arXiv ID or search query:", key="query_input")
+        st.header("Paper Input")
+        
+        # Input mode selection
+        input_mode = st.radio(
+            "Choose input method:",
+            options=["arXiv Paper", "Upload PDF"],
+            index=0 if st.session_state.input_mode == "arxiv" else 1,
+            key="input_mode_radio"
+        )
+        st.session_state.input_mode = "arxiv" if input_mode == "arXiv Paper" else "upload"
+        
+        if st.session_state.input_mode == "arxiv":
+            # arXiv search
+            query = st.text_input("Enter arXiv ID or search query:", key="query_input")
+            
+            if st.button("Search Papers", key="search_button"):
+                st.session_state.arxiv_id = None
+                st.session_state.paper_id = None
+                st.session_state.uploaded_pdf_path = None
+                st.session_state.pdf_path = None
+                st.session_state.messages = []
+                st.session_state.pipeline_status = "ready"
+
+                # Check if query is direct arxiv_id or needs search
+                direct_id = get_arxiv_id_from_query(query)
+                if direct_id:
+                    st.session_state.arxiv_id = direct_id
+                    st.session_state.paper_id = direct_id
+                else:
+                    results = search_arxiv(query)
+                    if results:
+                        st.session_state.search_results = results
+                    else:
+                        st.warning("No papers found.")
+
+            # Show search results for selection
+            if "search_results" in st.session_state:
+                st.subheader("Search Results")
+                for i, result in enumerate(st.session_state.search_results):
+                    if st.button(
+                        f"**{result.title[:60]}...** by {result.authors[0].name} et al.",
+                        key=f"select_{i}",
+                    ):
+                        st.session_state.arxiv_id = result.get_short_id()
+                        st.session_state.paper_id = result.get_short_id()
+                        del st.session_state.search_results
+                        st.rerun()
+        
+        else:
+            # PDF upload
+            uploaded_file = st.file_uploader(
+                "Upload a PDF file",
+                type=["pdf"],
+                key="pdf_uploader"
+            )
+            
+            if uploaded_file is not None:
+                # Save uploaded file to a temporary location
+                with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp_file:
+                    tmp_file.write(uploaded_file.getvalue())
+                    tmp_path = tmp_file.name
+                
+                # Generate a unique ID for this PDF
+                paper_id = generate_pdf_id(tmp_path)
+                
+                # Update session state
+                st.session_state.uploaded_pdf_path = tmp_path
+                st.session_state.paper_id = paper_id
+                st.session_state.arxiv_id = None
+                st.session_state.pdf_path = None
+                st.session_state.messages = []
+                st.session_state.pipeline_status = "ready"
+                
+                st.success(f"PDF uploaded successfully! ID: {paper_id}")
 
         st.header("Pipeline Settings")
         st.session_state.openai_api_key = st.text_input(
@@ -213,38 +326,12 @@ def main():
         # Pipeline control buttons
         st.header("Pipeline Control")
 
-        if st.button("Search Papers", key="search_button"):
-            st.session_state.arxiv_id = None
-            st.session_state.pdf_path = None
-            st.session_state.messages = []
-            st.session_state.pipeline_status = "ready"
-
-            # Check if query is direct arxiv_id or needs search
-            direct_id = get_arxiv_id_from_query(query)
-            if direct_id:
-                st.session_state.arxiv_id = direct_id
+        # Pipeline execution buttons (only show if paper_id is selected)
+        if st.session_state.paper_id:
+            if st.session_state.input_mode == "arxiv":
+                st.success(f"Selected arXiv: {st.session_state.paper_id}")
             else:
-                results = search_arxiv(query)
-                if results:
-                    st.session_state.search_results = results
-                else:
-                    st.warning("No papers found.")
-
-        # Show search results for selection
-        if "search_results" in st.session_state:
-            st.subheader("Search Results")
-            for i, result in enumerate(st.session_state.search_results):
-                if st.button(
-                    f"**{result.title[:60]}...** by {result.authors[0].name} et al.",
-                    key=f"select_{i}",
-                ):
-                    st.session_state.arxiv_id = result.get_short_id()
-                    del st.session_state.search_results
-                    st.rerun()
-
-        # Pipeline execution buttons (only show if arxiv_id is selected)
-        if st.session_state.arxiv_id:
-            st.success(f"Selected: {st.session_state.arxiv_id}")
+                st.success(f"Selected PDF: {st.session_state.paper_id}")
 
             # Only allow running if not currently processing
             can_run = st.session_state.pipeline_status in [
@@ -279,13 +366,13 @@ def main():
 
             with col2:
                 slides_exist = os.path.exists(
-                    f"source/{st.session_state.arxiv_id}/slides.tex"
+                    f"source/{st.session_state.paper_id}/slides.tex"
                 )
                 if st.button(
                     "🔨 Compile Only",
                     key="run_compile",
                     disabled=not can_run or not slides_exist,
-                    help="Compile existing slides to PDF (equivalent to 'python paper2slides.py compile <arxiv_id>')",
+                    help="Compile existing slides to PDF (equivalent to 'python paper2slides.py compile <paper_id>')",
                 ):
                     st.session_state.pipeline_status = "compiling"
                     st.session_state.run_full_pipeline = False
@@ -300,8 +387,8 @@ def main():
         # Only allow editing if pipeline is completed and PDF exists
         if (
             st.session_state.pipeline_status == "completed"
-            and st.session_state.arxiv_id
-            and os.path.exists(f"source/{st.session_state.arxiv_id}/slides.tex")
+            and st.session_state.paper_id
+            and os.path.exists(f"source/{st.session_state.paper_id}/slides.tex")
         ):
 
             # Display chat messages
@@ -318,7 +405,7 @@ def main():
                 with st.chat_message("assistant"):
                     with st.spinner("Editing slides..."):
                         slides_tex_path = (
-                            f"source/{st.session_state.arxiv_id}/slides.tex"
+                            f"source/{st.session_state.paper_id}/slides.tex"
                         )
                         with open(slides_tex_path, "r") as f:
                             beamer_code = f.read()
@@ -335,12 +422,12 @@ def main():
                                 f.write(new_beamer_code)
                             st.info("Recompiling PDF with changes...")
                             if run_compile_step(
-                                st.session_state.arxiv_id,
+                                st.session_state.paper_id,
                                 st.session_state.pdflatex_path,
                             ):
                                 st.success("PDF recompiled successfully!")
                                 st.session_state.pdf_path = (
-                                    f"source/{st.session_state.arxiv_id}/slides.pdf"
+                                    f"source/{st.session_state.paper_id}/slides.pdf"
                                 )
                                 st.rerun()
                             else:
@@ -358,13 +445,14 @@ def main():
         # Execute pipeline based on status
         if (
             st.session_state.pipeline_status == "generating"
-            and st.session_state.arxiv_id
+            and st.session_state.paper_id
         ):
             with st.spinner("🔄 Running slide generation..."):
                 success = run_generate_step(
-                    st.session_state.arxiv_id,
+                    st.session_state.paper_id,
                     st.session_state.openai_api_key,
                     st.session_state.model_name,
+                    st.session_state.uploaded_pdf_path,  # None for arXiv papers
                 )
 
                 if success:
@@ -381,18 +469,18 @@ def main():
 
         elif (
             st.session_state.pipeline_status == "compiling"
-            and st.session_state.arxiv_id
+            and st.session_state.paper_id
         ):
             with st.spinner("🔄 Compiling PDF..."):
                 success = run_compile_step(
-                    st.session_state.arxiv_id, st.session_state.pdflatex_path
+                    st.session_state.paper_id, st.session_state.pdflatex_path
                 )
 
                 if success:
                     st.success("✅ PDF compilation completed!")
                     st.session_state.pipeline_status = "completed"
                     st.session_state.pdf_path = (
-                        f"source/{st.session_state.arxiv_id}/slides.pdf"
+                        f"source/{st.session_state.paper_id}/slides.pdf"
                     )
                 else:
                     st.error("❌ PDF compilation failed!")
@@ -411,7 +499,7 @@ def main():
                 st.download_button(
                     "📥 Download PDF",
                     f,
-                    file_name=f"{st.session_state.arxiv_id}_slides.pdf",
+                    file_name=f"{st.session_state.paper_id}_slides.pdf",
                     mime="application/pdf",
                 )
             display_pdf_as_images(st.session_state.pdf_path)

@@ -37,7 +37,13 @@ Once installed, generate slides from any arXiv paper:
 python paper2slides.py all 2505.18102
 ```
 
-This will download the paper, generate slides, compile to PDF, and open the presentation automatically.
+Or from a local PDF file:
+
+```sh
+python paper2slides.py all --pdf /path/to/your/paper.pdf
+```
+
+This will download the paper (or process your PDF), generate slides, compile to PDF, and open the presentation automatically.
 
 ## Usage
 
@@ -46,11 +52,17 @@ This will download the paper, generate slides, compile to PDF, and open the pres
 The `paper2slides.py` script provides a CLI interface with subcommands:
 
 ```sh
-# Full pipeline (most common usage)
+# Full pipeline from arXiv (most common usage)
 python paper2slides.py all <arxiv_id>
 
-# Generate slides (beamer) only
+# Full pipeline from local PDF
+python paper2slides.py all --pdf /path/to/paper.pdf
+
+# Generate slides (beamer) only from arXiv
 python paper2slides.py generate <arxiv_id>
+
+# Generate slides from local PDF
+python paper2slides.py generate --pdf /path/to/paper.pdf
 
 # Generate slides (beamer) with linting and PDF cropping
 python paper2slides.py generate <arxiv_id> --use_linter --use_pdfcrop
@@ -64,6 +76,8 @@ python paper2slides.py all <arxiv_id> --no-open
 
 Replace `<arxiv_id>` with the desired arXiv paper ID.
 The ID can be identified from the URL: the ID for `https://arxiv.org/abs/xxxx.xxxx` is `xxxx.xxxx`.
+
+For local PDF files, use the `--pdf` flag followed by the path to your PDF file.
 
 The underlying `tex2beamer.py` and `beamer2pdf.py` scripts handle the core functionality:
 - `tex2beamer.py` downloads and processes the arXiv paper using `arxiv-to-prompt`, then generates Beamer slides via OpenAI API
@@ -89,7 +103,9 @@ Run the Streamlit app for a point-and-click experience:
 streamlit run app.py
 ```
 
-- Enter an arXiv ID (e.g., 2505.18102) or a search query in the sidebar.
+- Choose between "arXiv Paper" or "Upload PDF" mode in the sidebar.
+- For arXiv: Enter an arXiv ID (e.g., 2505.18102) or a search query in the sidebar.
+- For PDF: Upload a PDF file directly from your computer.
 - Click "Run Full Pipeline" to generate slides and compile the PDF, or use "Generate Only" / "Compile Only".
 - After the pipeline completes, you can interactively edit the slides in the left panel; changes are recompiled automatically.
 

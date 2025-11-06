@@ -19,8 +19,49 @@ import yaml
 import shutil
 import threading
 from typing import Optional, Tuple
+import fitz  # PyMuPDF for PDF text extraction
+import hashlib
 
 load_dotenv(override=True)
+
+def extract_text_from_pdf(pdf_path: str) -> str:
+    """
+    Extract text content from a PDF file using PyMuPDF.
+    
+    Args:
+        pdf_path: Path to the PDF file
+        
+    Returns:
+        Extracted text content
+    """
+    try:
+        doc = fitz.open(pdf_path)
+        text_content = []
+        
+        for page_num in range(len(doc)):
+            page = doc.load_page(page_num)
+            text_content.append(page.get_text())
+        
+        doc.close()
+        return "\n\n".join(text_content)
+    except Exception as e:
+        logging.error(f"Failed to extract text from PDF: {e}")
+        raise
+
+
+def generate_pdf_id(pdf_path: str) -> str:
+    """
+    Generate a unique ID for a PDF file based on its content hash.
+    
+    Args:
+        pdf_path: Path to the PDF file
+        
+    Returns:
+        A unique identifier (first 12 chars of SHA256 hash)
+    """
+    with open(pdf_path, "rb") as f:
+        file_hash = hashlib.sha256(f.read()).hexdigest()
+    return f"pdf_{file_hash[:12]}"
 
 def search_arxiv(query: str, max_results: int = 3) -> list[arxiv.Result]:
     """
@@ -48,7 +89,7 @@ def edit_slides(
     user_prompt = f"Instruction: {instruction}\n\nBeamer code:\n{beamer_code}"
 
     try:
-        # Resolve API key and base_url (supports DashScope compatible API)
+        # Resolve API key and base_url (supports multiple LLM providers)
         resolved_api_key = (
             api_key
             or os.environ.get("OPENAI_API_KEY")
@@ -59,10 +100,17 @@ def edit_slides(
                 "No API key provided. Set OPENAI_API_KEY or DASHSCOPE_API_KEY."
             )
         client_kwargs = {"api_key": resolved_api_key}
+        
+        # Determine which provider is being used and set base_url
         if resolved_api_key == os.environ.get("DASHSCOPE_API_KEY"):
+            # DashScope provider
             client_kwargs["base_url"] = (
-                "https://dashscope.aliyuncs.com/compatible-mode/v1"
+                os.environ.get("DASHSCOPE_BASE_URL") 
+                or "https://dashscope.aliyuncs.com/compatible-mode/v1"
             )
+        elif os.environ.get("OPENAI_BASE_URL"):
+            # Custom OpenAI-compatible provider (DeepSeek, Together, local, etc.)
+            client_kwargs["base_url"] = os.environ.get("OPENAI_BASE_URL")
 
         client = OpenAI(**client_kwargs)
         # Choose model (auto-adjust for DashScope if an OpenAI model is specified)
@@ -448,7 +496,7 @@ def process_stage(
     )
 
     try:
-        # Resolve API key and base_url (supports DashScope compatible API)
+        # Resolve API key and base_url (supports multiple LLM providers)
         resolved_api_key = (
             api_key
             or os.environ.get("OPENAI_API_KEY")
@@ -459,10 +507,17 @@ def process_stage(
                 "No API key provided. Set OPENAI_API_KEY or DASHSCOPE_API_KEY."
             )
         client_kwargs = {"api_key": resolved_api_key}
+        
+        # Determine which provider is being used and set base_url
         if resolved_api_key == os.environ.get("DASHSCOPE_API_KEY"):
+            # DashScope provider
             client_kwargs["base_url"] = (
-                "https://dashscope.aliyuncs.com/compatible-mode/v1"
+                os.environ.get("DASHSCOPE_BASE_URL") 
+                or "https://dashscope.aliyuncs.com/compatible-mode/v1"
             )
+        elif os.environ.get("OPENAI_BASE_URL"):
+            # Custom OpenAI-compatible provider (DeepSeek, Together, local, etc.)
+            client_kwargs["base_url"] = os.environ.get("OPENAI_BASE_URL")
 
         client = OpenAI(**client_kwargs)
         # Choose model (auto-adjust for DashScope if an OpenAI model is specified)
@@ -609,6 +664,131 @@ def generate_slides(
     if not process_stage(
         3,
         latex_source,
+        beamer_code,
+        linter_log,
+        figure_paths,
+        slides_tex_path,
+        api_key or "",
+        model_name,
+    ):
+        return False
+
+    logging.info("All stages completed successfully.")
+    return True
+
+
+def generate_slides_from_pdf(
+    pdf_path: str,
+    paper_id: str,
+    use_linter: bool,
+    use_pdfcrop: bool,
+    api_key: str | None = None,
+    model_name: str = "gpt-4.1-2025-04-14",
+) -> bool:
+    """
+    Generate slides from a local PDF file (not from arXiv).
+    
+    Args:
+        pdf_path: Path to the PDF file
+        paper_id: Unique identifier for this paper (will be generated if from uploaded PDF)
+        use_linter: Whether to use ChkTeX linter
+        use_pdfcrop: Whether to use pdfcrop (not used for direct PDF)
+        api_key: OpenAI/DashScope API key
+        model_name: Model to use for generation
+        
+    Returns:
+        True if successful, False otherwise
+    """
+    # Define paths
+    tex_files_directory = f"source/{paper_id}/"
+    slides_tex_path = f"{tex_files_directory}slides.tex"
+
+    # Create directories if not exist
+    os.makedirs(tex_files_directory, exist_ok=True)
+
+    # Extract text from PDF
+    logging.info(f"Extracting text from PDF: {pdf_path}")
+    try:
+        pdf_text = extract_text_from_pdf(pdf_path)
+        if not pdf_text.strip():
+            logging.error("No text content extracted from PDF. The PDF might be image-based or empty.")
+            return False
+    except Exception as e:
+        logging.error(f"Failed to extract text from PDF: {e}")
+        return False
+
+    # Copy the original PDF to the source directory for reference
+    try:
+        dest_pdf = Path(tex_files_directory) / "original_paper.pdf"
+        shutil.copy2(pdf_path, dest_pdf)
+        logging.info(f"Copied original PDF to {dest_pdf}")
+    except Exception as e:
+        logging.warning(f"Failed to copy original PDF: {e}")
+
+    # Create a minimal ADDITIONAL.tex (no LaTeX source to extract from)
+    add_tex_contents = build_additional_tex([])
+    save_additional_tex(add_tex_contents, tex_files_directory)
+
+    # For PDFs, we don't have figures to reference, but we'll allow the model to suggest them
+    figure_paths = []
+
+    # Since we don't have LaTeX source, we'll format the PDF text as the "source"
+    # We'll wrap it in a way that makes it clear this is plain text from a PDF
+    formatted_source = f"""% This is text extracted from a PDF file (not LaTeX source)
+% The following content should be used to create presentation slides
+
+{pdf_text}
+"""
+
+    # Stage 1: initial generation from PDF text
+    logging.info("Stage 1: generating slides from PDF text...")
+    if not process_stage(
+        1,
+        formatted_source,
+        "",
+        "",
+        figure_paths,
+        slides_tex_path,
+        api_key or "",
+        model_name,
+    ):
+        return False
+
+    logging.info("Stage 2: refining slides with update prompt...")
+    beamer_code = read_file(slides_tex_path)
+    if not process_stage(
+        2,
+        formatted_source,
+        beamer_code,
+        "",
+        figure_paths,
+        slides_tex_path,
+        api_key or "",
+        model_name,
+    ):
+        return False
+
+    # Process stage 3 (if linter is used)
+    if not use_linter:
+        logging.info("Skipping linter stage. Generation complete.")
+        return True
+
+    logging.info("Stage 3: running chktex and revising slides...")
+    subprocess.run(
+        [
+            "chktex",
+            "-o",
+            "linter.log",
+            "slides.tex",
+        ],
+        cwd=tex_files_directory,
+    )
+    linter_log = read_file(f"{tex_files_directory}linter.log")
+
+    beamer_code = read_file(slides_tex_path)
+    if not process_stage(
+        3,
+        formatted_source,
         beamer_code,
         linter_log,
         figure_paths,
