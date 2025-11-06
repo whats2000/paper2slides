@@ -684,6 +684,8 @@ def generate_slides_from_pdf(
     use_pdfcrop: bool,
     api_key: str | None = None,
     model_name: str = "gpt-4.1-2025-04-14",
+    base_url: str | None = None,
+    dashscope_base_url: str | None = None,
 ) -> bool:
     """
     Generate slides from a local PDF file (not from arXiv).
@@ -695,10 +697,18 @@ def generate_slides_from_pdf(
         use_pdfcrop: Whether to use pdfcrop (not used for direct PDF)
         api_key: OpenAI/DashScope API key
         model_name: Model to use for generation
+        base_url: Base URL for OpenAI-compatible API (overrides env)
+        dashscope_base_url: Base URL for DashScope API (overrides env)
         
     Returns:
         True if successful, False otherwise
     """
+    # Set base URLs in environment if provided (for process_stage to use)
+    if base_url:
+        os.environ["OPENAI_BASE_URL"] = base_url
+    if dashscope_base_url:
+        os.environ["DASHSCOPE_BASE_URL"] = dashscope_base_url
+    
     # Define paths
     tex_files_directory = f"source/{paper_id}/"
     slides_tex_path = f"{tex_files_directory}slides.tex"

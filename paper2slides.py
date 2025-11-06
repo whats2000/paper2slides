@@ -182,6 +182,8 @@ def cmd_generate(args) -> int:
             use_pdfcrop=args.use_pdfcrop if hasattr(args, 'use_pdfcrop') else False,
             api_key=args.api_key if hasattr(args, 'api_key') else None,
             model_name=args.model if hasattr(args, 'model') else "gpt-4.1-2025-04-14",
+            base_url=args.base_url if hasattr(args, 'base_url') else None,
+            dashscope_base_url=args.dashscope_base_url if hasattr(args, 'dashscope_base_url') else None,
         )
         
         if success:
@@ -432,6 +434,18 @@ Running without subcommand defaults to 'all':
         type=str,
         default=None,
         help="Model name to use (e.g., gpt-4.1-2025-04-14 or qwen-plus).",
+    )
+    parser_all.add_argument(
+        "--base_url",
+        type=str,
+        default=None,
+        help="Base URL for OpenAI-compatible API (overrides OPENAI_BASE_URL env). Examples: https://api.deepseek.com/v1, http://localhost:8000/v1",
+    )
+    parser_all.add_argument(
+        "--dashscope_base_url",
+        type=str,
+        default=None,
+        help="Base URL for DashScope API (overrides DASHSCOPE_BASE_URL env).",
     )
     parser_all.set_defaults(func=cmd_all)
 
