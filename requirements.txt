@@ -8,3 +8,4 @@ pypdf
 python-dotenv
 unidecode
 streamlit
+Pillow

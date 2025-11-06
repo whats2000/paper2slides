@@ -181,7 +181,7 @@ def cmd_generate(args) -> int:
             use_linter=args.use_linter if hasattr(args, 'use_linter') else False,
             use_pdfcrop=args.use_pdfcrop if hasattr(args, 'use_pdfcrop') else False,
             api_key=args.api_key if hasattr(args, 'api_key') else None,
-            model_name=args.model if hasattr(args, 'model') else "gpt-4.1-2025-04-14",
+            model_name=args.model if hasattr(args, 'model') and args.model else None,
             base_url=args.base_url if hasattr(args, 'base_url') else None,
             dashscope_base_url=args.dashscope_base_url if hasattr(args, 'dashscope_base_url') else None,
         )

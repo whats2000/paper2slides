@@ -21,6 +21,8 @@ import threading
 from typing import Optional, Tuple
 import fitz  # PyMuPDF for PDF text extraction
 import hashlib
+from PIL import Image
+import io
 
 load_dotenv(override=True)
 
@@ -47,6 +49,79 @@ def extract_text_from_pdf(pdf_path: str) -> str:
     except Exception as e:
         logging.error(f"Failed to extract text from PDF: {e}")
         raise
+
+
+def extract_images_from_pdf(pdf_path: str, output_dir: str) -> list[str]:
+    """
+    Extract images from a PDF file using PyMuPDF and save them to the output directory.
+    
+    Args:
+        pdf_path: Path to the PDF file
+        output_dir: Directory to save extracted images
+        
+    Returns:
+        List of relative paths to extracted images
+    """
+    try:
+        doc = fitz.open(pdf_path)
+        image_paths = []
+        figures_dir = Path(output_dir) / "figures"
+        figures_dir.mkdir(parents=True, exist_ok=True)
+        
+        image_count = 0
+        
+        for page_num in range(len(doc)):
+            page = doc.load_page(page_num)
+            image_list = page.get_images(full=True)
+            
+            for img_index, img in enumerate(image_list):
+                xref = img[0]
+                base_image = doc.extract_image(xref)
+                image_bytes = base_image["image"]
+                image_ext = base_image["ext"]
+                
+                # Skip very small images (likely logos or decorations)
+                # Check image dimensions
+                try:
+                    img_pil = Image.open(io.BytesIO(image_bytes))
+                    width, height = img_pil.size
+                    
+                    # Skip images smaller than 100x100 pixels
+                    if width < 100 or height < 100:
+                        logging.debug(f"Skipping small image on page {page_num + 1}: {width}x{height}")
+                        continue
+                    
+                    # Skip images with extreme aspect ratios (likely not figures)
+                    aspect_ratio = max(width, height) / min(width, height)
+                    if aspect_ratio > 10:
+                        logging.debug(f"Skipping image with extreme aspect ratio on page {page_num + 1}: {aspect_ratio}")
+                        continue
+                        
+                except Exception as e:
+                    logging.warning(f"Could not check image dimensions: {e}")
+                
+                # Save image with a meaningful name
+                image_filename = f"figure_{image_count:03d}.{image_ext}"
+                image_path = figures_dir / image_filename
+                
+                with open(image_path, "wb") as img_file:
+                    img_file.write(image_bytes)
+                
+                # Store relative path for LaTeX
+                relative_path = f"figures/{image_filename}"
+                image_paths.append(relative_path)
+                image_count += 1
+                
+                logging.info(f"Extracted image from page {page_num + 1}: {relative_path}")
+        
+        doc.close()
+        
+        logging.info(f"Total images extracted: {len(image_paths)}")
+        return image_paths
+        
+    except Exception as e:
+        logging.error(f"Failed to extract images from PDF: {e}")
+        return []
 
 
 def generate_pdf_id(pdf_path: str) -> str:
@@ -410,7 +485,7 @@ def save_additional_tex(contents: str, dest_dir: str) -> None:
 
 
 def add_additional_tex(content: str) -> str:
-    """
+    r"""
     Ensure that \input{ADDITIONAL.tex} is present. If missing, add near the top after documentclass.
     """
     if not content:
@@ -577,8 +652,12 @@ def generate_slides(
     use_linter: bool,
     use_pdfcrop: bool,
     api_key: str | None = None,
-    model_name: str = "gpt-4.1-2025-04-14",
+    model_name: str | None = None,
 ) -> bool:
+    # Use DEFAULT_MODEL from environment if model_name is not provided
+    if model_name is None:
+        model_name = os.getenv("DEFAULT_MODEL", "gpt-4.1-2025-04-14")
+    
     # Define paths
     cache_dir = f"cache/{arxiv_id}"
     tex_files_directory = f"source/{arxiv_id}/"
@@ -683,7 +762,7 @@ def generate_slides_from_pdf(
     use_linter: bool,
     use_pdfcrop: bool,
     api_key: str | None = None,
-    model_name: str = "gpt-4.1-2025-04-14",
+    model_name: str | None = None,
     base_url: str | None = None,
     dashscope_base_url: str | None = None,
 ) -> bool:
@@ -696,13 +775,16 @@ def generate_slides_from_pdf(
         use_linter: Whether to use ChkTeX linter
         use_pdfcrop: Whether to use pdfcrop (not used for direct PDF)
         api_key: OpenAI/DashScope API key
-        model_name: Model to use for generation
+        model_name: Model to use for generation (defaults to DEFAULT_MODEL env var)
         base_url: Base URL for OpenAI-compatible API (overrides env)
         dashscope_base_url: Base URL for DashScope API (overrides env)
         
     Returns:
         True if successful, False otherwise
     """
+    # Use DEFAULT_MODEL from environment if model_name is not provided
+    if model_name is None:
+        model_name = os.getenv("DEFAULT_MODEL", "gpt-4.1-2025-04-14")
     # Set base URLs in environment if provided (for process_stage to use)
     if base_url:
         os.environ["OPENAI_BASE_URL"] = base_url
@@ -727,6 +809,18 @@ def generate_slides_from_pdf(
         logging.error(f"Failed to extract text from PDF: {e}")
         return False
 
+    # Extract images from PDF
+    logging.info(f"Extracting images from PDF: {pdf_path}")
+    try:
+        figure_paths = extract_images_from_pdf(pdf_path, tex_files_directory)
+        if figure_paths:
+            logging.info(f"Successfully extracted {len(figure_paths)} images from PDF")
+        else:
+            logging.info("No images found in PDF (or all were too small)")
+    except Exception as e:
+        logging.warning(f"Failed to extract images from PDF: {e}")
+        figure_paths = []
+
     # Copy the original PDF to the source directory for reference
     try:
         dest_pdf = Path(tex_files_directory) / "original_paper.pdf"
@@ -738,9 +832,6 @@ def generate_slides_from_pdf(
     # Create a minimal ADDITIONAL.tex (no LaTeX source to extract from)
     add_tex_contents = build_additional_tex([])
     save_additional_tex(add_tex_contents, tex_files_directory)
-
-    # For PDFs, we don't have figures to reference, but we'll allow the model to suggest them
-    figure_paths = []
 
     # Since we don't have LaTeX source, we'll format the PDF text as the "source"
     # We'll wrap it in a way that makes it clear this is plain text from a PDF

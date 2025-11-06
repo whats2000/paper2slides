@@ -1,7 +1,12 @@
 import sys
 import logging
 import argparse
+import os
 from core import generate_slides
+from dotenv import load_dotenv
+
+# Load environment variables
+load_dotenv(override=True)
 
 
 def main():
@@ -34,8 +39,8 @@ def main():
     parser.add_argument(
         "--model",
         type=str,
-        default="gpt-4.1-2025-04-14",
-        help="OpenAI model name (default: gpt-4.1-2025-04-14)",
+        default=None,
+        help="Model name (default: from DEFAULT_MODEL env or gpt-4.1-2025-04-14)",
     )
     args = parser.parse_args()
 

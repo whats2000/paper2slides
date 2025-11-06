@@ -15,5 +15,6 @@ dependencies = [
     "pypdf",
     "python-dotenv",
     "unidecode",
-    "streamlit"
+    "streamlit",
+    "Pillow"
 ]

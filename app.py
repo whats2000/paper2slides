@@ -213,7 +213,8 @@ def main():
         load_dotenv(override=True)
         st.session_state.openai_api_key = os.getenv("OPENAI_API_KEY", "")
     if "model_name" not in st.session_state:
-        st.session_state.model_name = "gpt-4.1"
+        load_dotenv(override=True)
+        st.session_state.model_name = os.getenv("DEFAULT_MODEL", "gpt-4.1-2025-04-14")
 
     if "run_full_pipeline" not in st.session_state:
         st.session_state.run_full_pipeline = False
@@ -287,7 +288,7 @@ def main():
                 key="pdf_uploader"
             )
             
-            if uploaded_file is not None:
+            if uploaded_file is not None and ("uploaded_file_name" not in st.session_state or st.session_state.uploaded_file_name != uploaded_file.name):
                 # Save uploaded file to a temporary location
                 with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp_file:
                     tmp_file.write(uploaded_file.getvalue())
@@ -303,6 +304,7 @@ def main():
                 st.session_state.pdf_path = None
                 st.session_state.messages = []
                 st.session_state.pipeline_status = "ready"
+                st.session_state.uploaded_file_name = uploaded_file.name
                 
                 st.success(f"PDF uploaded successfully! ID: {paper_id}")
 
@@ -318,6 +320,9 @@ def main():
         st.session_state.model_name = st.text_input(
             "Model Name (e.g., gpt-4.1-2025-04-14 or qwen-plus)",
             value=st.session_state.model_name,
+        )
+        st.caption(
+            "Default model from .env (DEFAULT_MODEL). Can be overridden here."
         )
         st.session_state.pdflatex_path = st.text_input(
             "Path to pdflatex compiler", value=st.session_state.pdflatex_path
