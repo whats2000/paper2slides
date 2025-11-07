@@ -203,9 +203,14 @@ def run_generate_step(paper_id: str, api_key: str, model_name: str, pdf_path: st
     return success
 
 
-def run_compile_step(paper_id: str, pdflatex_path: str) -> bool:
+def run_compile_step(paper_id: str, pdflatex_path: str, save_history: bool = True) -> bool:
     """
     Step 2: Compile LaTeX slides to PDF (equivalent to cmd_compile)
+    
+    Args:
+        paper_id: Paper ID
+        pdflatex_path: Path to pdflatex compiler
+        save_history: Whether to save version history after successful compile (default True)
     """
     logging.info("=" * 60)
     logging.info("COMPILING SLIDES TO PDF")
@@ -215,6 +220,7 @@ def run_compile_step(paper_id: str, pdflatex_path: str) -> bool:
         tex_file_path="slides.tex",
         output_directory=f"source/{paper_id}/",
         pdflatex_path=pdflatex_path,
+        save_history=save_history,
     )
 
     if success:
@@ -223,6 +229,28 @@ def run_compile_step(paper_id: str, pdflatex_path: str) -> bool:
         logging.error("✗ PDF compilation failed")
 
     return success
+
+
+def ensure_initial_history(paper_id: str) -> None:
+    """
+    Ensure that an initial history version exists for a project.
+    If no history exists yet, save the current slides.tex as the initial version.
+    
+    Args:
+        paper_id: The paper ID
+    """
+    try:
+        history = get_history_manager(paper_id)
+        if not history.has_history():
+            # No history exists yet - save initial version
+            slides_tex_path = f"source/{paper_id}/slides.tex"
+            if os.path.exists(slides_tex_path):
+                with open(slides_tex_path, 'r', encoding='utf-8') as f:
+                    tex_content = f.read()
+                history.save_version(tex_content, "Initial version (before edits)")
+                logging.info("Saved initial version to history")
+    except Exception as e:
+        logging.warning(f"Failed to ensure initial history: {e}")
 
 
 def run_full_pipeline(
@@ -442,7 +470,7 @@ def main():
                 
                 # Load button
                 if selected_display != "-- Select a project --":
-                    if st.button("📂 Load Selected Project", key="load_project_btn", use_container_width=True):
+                    if st.button("📂 Load Selected Project", key="load_project_btn", width='stretch'):
                         project = project_options[selected_display]
                         
                         # Load the project
@@ -455,6 +483,9 @@ def main():
                             # Project is ready for editing
                             st.session_state.pipeline_status = "completed"
                             st.session_state.pdf_path = project["pdf_path"]
+                            
+                            # Ensure initial history exists when loading project
+                            ensure_initial_history(project["id"])
                         else:
                             # Project needs compilation
                             st.session_state.pipeline_status = "ready"
@@ -554,13 +585,21 @@ def main():
             and st.session_state.paper_id
             and os.path.exists(f"source/{st.session_state.paper_id}/slides.tex")
         ):
+            # Ensure initial history exists before showing editing UI
+            ensure_initial_history(st.session_state.paper_id)
+            
             # Version History Section
             history = get_history_manager(st.session_state.paper_id)
             versions = history.list_versions()
             
             if versions:
                 with st.expander(f"📜 Version History ({len(versions)} saved versions)", expanded=False):
-                    st.caption("Versions are automatically saved after each successful compile")
+                    st.caption("Versions are automatically saved after each successful compile. Click any version to restore it.")
+                    
+                    # Track which version is currently loaded (default to latest if not set)
+                    current_version_key = f"current_version_{st.session_state.paper_id}"
+                    if current_version_key not in st.session_state and versions:
+                        st.session_state[current_version_key] = versions[0]['filename']
                     
                     for idx, version in enumerate(versions):
                         # Parse timestamp for display
@@ -570,24 +609,34 @@ def main():
                         except:
                             time_str = version['timestamp']
                         
+                        # Check if this is the currently loaded version
+                        is_current = st.session_state.get(current_version_key) == version['filename']
+                        
                         col_info, col_btn = st.columns([3, 1])
                         with col_info:
-                            if idx == 0:
-                                st.markdown(f"**✅ Latest:** {time_str}")
+                            if is_current:
+                                st.markdown(f"**✅ Active:** {time_str}")
+                            elif idx == 0:
+                                st.markdown(f"**Latest:** {time_str}")
                             else:
                                 st.markdown(f"**{idx + 1}.** {time_str}")
                             st.caption(version['description'])
                         
                         with col_btn:
-                            if idx > 0:  # Don't show restore for latest version (it's current)
+                            # Show restore button for all versions except the current one
+                            if not is_current:
                                 if st.button("Restore", key=f"restore_{version['filename']}"):
                                     slides_tex_path = f"source/{st.session_state.paper_id}/slides.tex"
                                     if history.restore_version(version['filename'], slides_tex_path):
+                                        # Update the current version tracker
+                                        st.session_state[current_version_key] = version['filename']
+                                        
                                         st.success("✅ Restored! Recompiling...")
-                                        # Recompile after restore
+                                        # Recompile after restore WITHOUT saving to history (to avoid duplicate)
                                         if run_compile_step(
                                             st.session_state.paper_id,
                                             st.session_state.pdflatex_path,
+                                            save_history=False  # Don't save history when restoring
                                         ):
                                             st.session_state.pdf_path = (
                                                 f"source/{st.session_state.paper_id}/slides.pdf"
@@ -597,9 +646,60 @@ def main():
                                             st.error("Failed to recompile after restore.")
                                     else:
                                         st.error("Failed to restore version.")
+                            else:
+                                st.caption("📍 Current")
+
+                            # Delete (two-step confirm) - but protect initial version and current version
+                            # The initial version is always the last in the list (oldest)
+                            is_initial = (idx == len(versions) - 1) and version['description'].startswith("Initial version")
+                            
+                            if not is_initial and not is_current:
+                                delete_key = f"delete_pending_{version['filename']}"
+                                if st.session_state.get(delete_key):
+                                    st.write("⚠️ Confirm delete?")
+                                    if st.button("Confirm", key=f"confirm_delete_{version['filename']}", width='stretch'):
+                                        if history.delete_version(version['filename']):
+                                            st.success("Deleted.")
+                                        else:
+                                            st.error("Failed to delete.")
+                                        # Clear the pending flag and refresh
+                                        st.session_state[delete_key] = False
+                                        st.rerun()
+                                    if st.button("Cancel", key=f"cancel_delete_{version['filename']}", width='stretch'):
+                                        st.session_state[delete_key] = False
+                                        st.rerun()
+                                else:
+                                    if st.button("Delete", key=f"delete_{version['filename']}", width='stretch'):
+                                        st.session_state[delete_key] = True
+                            elif is_initial:
+                                # Initial version - show a lock icon
+                                st.caption("🔒")
                         
                         if idx < len(versions) - 1:
                             st.divider()
+
+                    # Clear-all history control (two-step confirm)
+                    st.divider()
+                    clear_key = f"clear_history_pending_{st.session_state.paper_id}"
+                    if st.button("Clear all saved versions", key=f"clear_all_{st.session_state.paper_id}"):
+                        st.session_state[clear_key] = True
+
+                    if st.session_state.get(clear_key):
+                        st.warning("⚠️ This will permanently delete all saved working versions for this project. The initial version and currently active version will be preserved.")
+                        if st.button("Confirm clear all", key=f"confirm_clear_{st.session_state.paper_id}"):
+                            # Get current version to preserve
+                            current_version_key = f"current_version_{st.session_state.paper_id}"
+                            current_version = st.session_state.get(current_version_key)
+                            
+                            if history.clear_history(preserve_current=current_version):
+                                st.success("All saved working versions deleted. Initial and current versions preserved.")
+                            else:
+                                st.error("Failed to clear history.")
+                            st.session_state[clear_key] = False
+                            st.rerun()
+                        if st.button("Cancel", key=f"cancel_clear_{st.session_state.paper_id}"):
+                            st.session_state[clear_key] = False
+                            st.rerun()
             
             st.divider()
             
@@ -695,6 +795,13 @@ def main():
                             st.session_state.paper_id,
                             st.session_state.pdflatex_path,
                         ):
+                            # Update current version tracker to the latest (newly saved) version
+                            history_mgr = get_history_manager(st.session_state.paper_id)
+                            latest_versions = history_mgr.list_versions()
+                            if latest_versions:
+                                current_version_key = f"current_version_{st.session_state.paper_id}"
+                                st.session_state[current_version_key] = latest_versions[0]['filename']
+                            
                             st.success(f"✅ {edit_message}. PDF recompiled successfully!")
                             st.session_state.pdf_path = (
                                 f"source/{st.session_state.paper_id}/slides.pdf"
@@ -731,6 +838,13 @@ def main():
                             st.session_state.paper_id,
                             st.session_state.pdflatex_path,
                         ):
+                            # Update current version tracker to the latest (newly saved) version
+                            history_mgr = get_history_manager(st.session_state.paper_id)
+                            latest_versions = history_mgr.list_versions()
+                            if latest_versions:
+                                current_version_key = f"current_version_{st.session_state.paper_id}"
+                                st.session_state[current_version_key] = latest_versions[0]['filename']
+                            
                             st.success(f"✅ Edited slide {edit_info['frame_number']} successfully!")
                             st.session_state.pdf_path = (
                                 f"source/{st.session_state.paper_id}/slides.pdf"
@@ -788,6 +902,9 @@ def main():
                     st.session_state.pdf_path = (
                         f"source/{st.session_state.paper_id}/slides.pdf"
                     )
+                    
+                    # Ensure initial history exists after first successful compile
+                    ensure_initial_history(st.session_state.paper_id)
                 else:
                     st.error("❌ PDF compilation failed!")
                     st.session_state.pipeline_status = "failed"

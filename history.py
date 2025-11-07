@@ -70,19 +70,34 @@ class VersionHistory:
         versions = []
         if not self.history_dir.exists():
             return versions
-        
-        for version_file in sorted(self.history_dir.glob("version_*.json"), reverse=True):
+
+        # Read all version files and sort by recorded timestamp (newest first)
+        entries = []
+        for version_file in self.history_dir.glob("version_*.json"):
             try:
                 with open(version_file, 'r', encoding='utf-8') as f:
                     data = json.load(f)
-                    versions.append({
-                        'filename': version_file.name,
-                        'timestamp': data.get('timestamp', ''),
-                        'description': data.get('description', 'Unknown'),
-                    })
+                    ts = data.get('timestamp')
+                    # Try to parse timestamp to datetime for reliable sorting
+                    try:
+                        parsed_ts = datetime.fromisoformat(ts) if ts else None
+                    except Exception:
+                        parsed_ts = None
+
+                    entries.append((version_file.name, parsed_ts, data.get('description', 'Unknown')))
             except Exception as e:
                 logging.error(f"Failed to read version file {version_file}: {e}")
-        
+
+        # Sort by parsed timestamp descending (None values go last)
+        entries.sort(key=lambda x: x[1] or datetime.min, reverse=True)
+
+        for filename, parsed_ts, desc in entries:
+            versions.append({
+                'filename': filename,
+                'timestamp': parsed_ts.isoformat() if parsed_ts else '',
+                'description': desc,
+            })
+
         return versions
     
     def get_latest_version(self) -> Optional[str]:
@@ -151,23 +166,88 @@ class VersionHistory:
         except Exception as e:
             logging.error(f"Failed to restore version: {e}")
             return False
+
+    def delete_version(self, filename: str) -> bool:
+        """
+        Delete a specific saved version file.
+
+        Args:
+            filename: The version filename to delete
+
+        Returns:
+            True if deleted successfully, False otherwise
+        """
+        version_file = self.history_dir / filename
+        if not version_file.exists():
+            logging.warning(f"Version file {filename} does not exist")
+            return False
+
+        try:
+            version_file.unlink()
+            logging.info(f"Deleted history file {filename}")
+            return True
+        except Exception as e:
+            logging.error(f"Failed to delete version {filename}: {e}")
+            return False
     
     def has_history(self) -> bool:
         """Check if any version history exists."""
         return len(self.list_versions()) > 0
     
-    def clear_history(self) -> bool:
+    def clear_history(self, preserve_current: Optional[str] = None) -> bool:
         """
-        Clear all version history for this paper.
+        Clear all version history for this paper, preserving the initial version and optionally the current active version.
+        
+        Args:
+            preserve_current: Filename of the currently active version to preserve (optional)
         
         Returns:
             True if successful, False otherwise
         """
         try:
-            if self.history_dir.exists():
-                shutil.rmtree(self.history_dir)
+            if not self.history_dir.exists():
+                return True
+            
+            # Get all versions to identify versions to preserve
+            versions = self.list_versions()
+            versions_to_preserve = []
+            
+            # Find the initial version (oldest with "Initial version" description)
+            if versions:
+                oldest_version = versions[-1]
+                if oldest_version['description'].startswith("Initial version"):
+                    versions_to_preserve.append(oldest_version['filename'])
+            
+            # Add current version if specified and different from initial
+            if preserve_current and preserve_current not in versions_to_preserve:
+                versions_to_preserve.append(preserve_current)
+            
+            # Read content of versions to preserve
+            preserved_data = {}
+            for filename in versions_to_preserve:
+                version_file = self.history_dir / filename
+                if version_file.exists():
+                    try:
+                        with open(version_file, 'r', encoding='utf-8') as f:
+                            preserved_data[filename] = json.load(f)
+                    except Exception as e:
+                        logging.error(f"Failed to read version to preserve {filename}: {e}")
+            
+            # Clear the directory
+            shutil.rmtree(self.history_dir)
             self.history_dir.mkdir(parents=True, exist_ok=True)
-            logging.info(f"Cleared history for paper {self.paper_id}")
+            
+            # Restore preserved versions
+            for filename, data in preserved_data.items():
+                version_file = self.history_dir / filename
+                try:
+                    with open(version_file, 'w', encoding='utf-8') as f:
+                        json.dump(data, f, indent=2)
+                except Exception as e:
+                    logging.error(f"Failed to restore preserved version {filename}: {e}")
+            
+            preserved_count = len(preserved_data)
+            logging.info(f"Cleared history for paper {self.paper_id}, preserved {preserved_count} version(s)")
             return True
         except Exception as e:
             logging.error(f"Failed to clear history: {e}")

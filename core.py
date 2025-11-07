@@ -434,12 +434,20 @@ def get_pdflatex_path() -> str:
 
 
 def compile_latex(
-    tex_file_path: str, output_directory: str, pdflatex_path: str = "pdflatex"
+    tex_file_path: str, output_directory: str, pdflatex_path: str = "pdflatex", save_history: bool = True
 ) -> bool:
     """
     Compiles a LaTeX file to PDF using pdflatex.
-    Saves version history after successful compilation.
-    Returns True on success, False on failure.
+    Optionally saves version history after successful compilation.
+    
+    Args:
+        tex_file_path: Path to the .tex file
+        output_directory: Directory containing the tex file
+        pdflatex_path: Path to pdflatex compiler
+        save_history: Whether to save to version history after successful compile (default True)
+    
+    Returns:
+        True on success, False on failure.
     """
     try:
         # Pre-sanitize frametitles in slides.tex to avoid '&' errors
@@ -476,8 +484,9 @@ def compile_latex(
                 logging.warning(
                     "pdflatex returned non-zero exit but PDF was produced. Proceeding as success."
                 )
-                # Save to history on successful compile
-                _save_compile_history(full_tex_path, output_directory)
+                # Save to history on successful compile (only if save_history is True)
+                if save_history:
+                    _save_compile_history(full_tex_path, output_directory)
                 return True
             return False
 
@@ -488,8 +497,9 @@ def compile_latex(
 
         logging.info(f"Successfully compiled {tex_file_path} using {pdflatex_path}.")
         
-        # Save to history after successful compilation
-        _save_compile_history(full_tex_path, output_directory)
+        # Save to history after successful compilation (only if save_history is True)
+        if save_history:
+            _save_compile_history(full_tex_path, output_directory)
         
         return True
     except FileNotFoundError:
