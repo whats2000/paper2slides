@@ -22,7 +22,14 @@ To install:
     pip install -r requirements.txt
     ```
 
-3. Ensure `pdflatex` is installed and available in your system's PATH. Optionally check if you can compile the sample `test.tex` by `pdflatex test.tex`. Check if `test.pdf` is generated correctly. Optionally check `chktex` and `pdfcrop` are working.
+3. Install a LaTeX distribution that includes `pdflatex`. Popular options include:
+
+   - [MikTeX](https://miktex.org/) (recommended for Windows)
+   - [TeX Live](https://www.tug.org/texlive/) (cross-platform)
+
+   After installation, ensure the LaTeX binaries are in your system's PATH.
+
+   Optionally check if you can compile the sample `test.tex` by `pdflatex test.tex`. Check if `test.pdf` is generated correctly. Optionally check `chktex` and `pdfcrop` are working.
 
 4. Set up your OpenAI API key:
     ```sh
