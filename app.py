@@ -3,6 +3,7 @@ import os
 import time
 import arxiv
 import re
+import datetime
 from core import (
     generate_slides,
     generate_slides_from_pdf,
@@ -19,6 +20,37 @@ from pathlib import Path
 from dotenv import load_dotenv
 import fitz  # PyMuPDF
 import tempfile
+
+
+def get_existing_projects():
+    """
+    Scan the source directory for existing projects.
+    Returns a list of dictionaries with project information.
+    """
+    source_dir = Path("source")
+    if not source_dir.exists():
+        return []
+    
+    projects = []
+    for project_dir in source_dir.iterdir():
+        if project_dir.is_dir():
+            slides_tex = project_dir / "slides.tex"
+            slides_pdf = project_dir / "slides.pdf"
+            
+            if slides_tex.exists():
+                project_info = {
+                    "id": project_dir.name,
+                    "has_tex": True,
+                    "has_pdf": slides_pdf.exists(),
+                    "pdf_path": str(slides_pdf) if slides_pdf.exists() else None,
+                    "tex_path": str(slides_tex),
+                    "modified_time": slides_tex.stat().st_mtime if slides_tex.exists() else 0,
+                }
+                projects.append(project_info)
+    
+    # Sort by modification time (newest first)
+    projects.sort(key=lambda x: x["modified_time"], reverse=True)
+    return projects
 
 
 def display_pdf(file_path):
@@ -199,7 +231,7 @@ def main():
     if "uploaded_pdf_path" not in st.session_state:
         st.session_state.uploaded_pdf_path = None
     if "input_mode" not in st.session_state:
-        st.session_state.input_mode = "arxiv"  # "arxiv" or "upload"
+        st.session_state.input_mode = "arxiv"  # "arxiv", "upload", or "load"
     if "pdf_path" not in st.session_state:
         st.session_state.pdf_path = None
     if "pipeline_status" not in st.session_state:
@@ -237,11 +269,17 @@ def main():
         # Input mode selection
         input_mode = st.radio(
             "Choose input method:",
-            options=["arXiv Paper", "Upload PDF"],
-            index=0 if st.session_state.input_mode == "arxiv" else 1,
+            options=["arXiv Paper", "Upload PDF", "Load Previous Project"],
+            index=0 if st.session_state.input_mode == "arxiv" else (1 if st.session_state.input_mode == "upload" else 2),
             key="input_mode_radio"
         )
-        st.session_state.input_mode = "arxiv" if input_mode == "arXiv Paper" else "upload"
+        
+        if input_mode == "arXiv Paper":
+            st.session_state.input_mode = "arxiv"
+        elif input_mode == "Upload PDF":
+            st.session_state.input_mode = "upload"
+        else:
+            st.session_state.input_mode = "load"
         
         if st.session_state.input_mode == "arxiv":
             # arXiv search
@@ -280,7 +318,7 @@ def main():
                         del st.session_state.search_results
                         st.rerun()
         
-        else:
+        elif st.session_state.input_mode == "upload":
             # PDF upload
             uploaded_file = st.file_uploader(
                 "Upload a PDF file",
@@ -307,6 +345,59 @@ def main():
                 st.session_state.uploaded_file_name = uploaded_file.name
                 
                 st.success(f"PDF uploaded successfully! ID: {paper_id}")
+        
+        else:
+            # Load previous project
+            existing_projects = get_existing_projects()
+            
+            if not existing_projects:
+                st.info("No previous projects found. Generate slides from an arXiv paper or uploaded PDF first.")
+            else:
+                st.subheader("Select a Previous Project")
+                st.caption(f"Found {len(existing_projects)} project(s)")
+                
+                # Create options for the selectbox with formatted display
+                project_options = {}
+                for project in existing_projects:
+                    status_icon = "✅" if project["has_pdf"] else "📝"
+                    status_text = "Ready" if project["has_pdf"] else "Needs compilation"
+                    mod_time = datetime.datetime.fromtimestamp(project["modified_time"])
+                    time_str = mod_time.strftime("%Y-%m-%d %H:%M")
+                    
+                    display_text = f"{status_icon} {project['id']} ({status_text}, {time_str})"
+                    project_options[display_text] = project
+                
+                # Add a placeholder option
+                options_list = ["-- Select a project --"] + list(project_options.keys())
+                
+                selected_display = st.selectbox(
+                    "Choose a project:",
+                    options=options_list,
+                    key="project_selector",
+                    help="Select a previous project to load and edit. Projects are sorted by modification time (newest first)."
+                )
+                
+                # Load button
+                if selected_display != "-- Select a project --":
+                    if st.button("📂 Load Selected Project", key="load_project_btn", use_container_width=True):
+                        project = project_options[selected_display]
+                        
+                        # Load the project
+                        st.session_state.paper_id = project["id"]
+                        st.session_state.arxiv_id = None
+                        st.session_state.uploaded_pdf_path = None
+                        st.session_state.messages = []
+                        
+                        if project["has_pdf"]:
+                            # Project is ready for editing
+                            st.session_state.pipeline_status = "completed"
+                            st.session_state.pdf_path = project["pdf_path"]
+                        else:
+                            # Project needs compilation
+                            st.session_state.pipeline_status = "ready"
+                            st.session_state.pdf_path = None
+                        
+                        st.rerun()
 
         st.header("Pipeline Settings")
         st.session_state.openai_api_key = st.text_input(
@@ -335,8 +426,10 @@ def main():
         if st.session_state.paper_id:
             if st.session_state.input_mode == "arxiv":
                 st.success(f"Selected arXiv: {st.session_state.paper_id}")
-            else:
+            elif st.session_state.input_mode == "upload":
                 st.success(f"Selected PDF: {st.session_state.paper_id}")
+            else:
+                st.success(f"Loaded Project: {st.session_state.paper_id}")
 
             # Only allow running if not currently processing
             can_run = st.session_state.pipeline_status in [
@@ -344,12 +437,15 @@ def main():
                 "completed",
                 "failed",
             ]
+            
+            # Disable generation buttons if in "load" mode (project already exists)
+            is_loaded_project = st.session_state.input_mode == "load"
 
             if st.button(
                 "🚀 Run Full Pipeline",
                 key="run_full",
-                disabled=not can_run,
-                help="Generate slides + Compile PDF (equivalent to 'python paper2slides.py all <arxiv_id>')",
+                disabled=not can_run or is_loaded_project,
+                help="Generate slides + Compile PDF (equivalent to 'python paper2slides.py all <arxiv_id>')" if not is_loaded_project else "Disabled: Project already exists. Use 'Compile Only' if needed.",
             ):
                 st.session_state.pipeline_status = "generating"
                 st.session_state.pdf_path = None
@@ -361,8 +457,8 @@ def main():
                 if st.button(
                     "📝 Generate Only",
                     key="run_generate",
-                    disabled=not can_run,
-                    help="Generate slides only (equivalent to 'python paper2slides.py generate <arxiv_id>')",
+                    disabled=not can_run or is_loaded_project,
+                    help="Generate slides only (equivalent to 'python paper2slides.py generate <arxiv_id>')" if not is_loaded_project else "Disabled: Project already exists.",
                 ):
                     st.session_state.pipeline_status = "generating"
                     st.session_state.pdf_path = None
