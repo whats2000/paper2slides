@@ -319,13 +319,25 @@ def edit_single_slide(
         logging.error(f"Frame {frame_number} not found in Beamer code")
         return None
     
+    # Extract preamble (everything before first \begin{frame})
+    preamble_match = re.search(r'(.+?)\\begin\{frame\}', beamer_code, re.DOTALL)
+    preamble = preamble_match.group(1) if preamble_match else ""
+    
     system_message = (
         "You are an expert in LaTeX and Beamer. "
-        "Please edit the following single Beamer frame based on the user's instruction. "
-        "Only output the updated frame code (including \\begin{frame} and \\end{frame}) in a single ```latex block. "
-        "Do NOT include any other frames or preamble - just this one frame."
+        "You will be given the full Beamer presentation (with preamble and all frames) for context, "
+        "and instructions to edit a specific frame. "
+        "Only output the updated SINGLE frame code (including \\begin{frame} and \\end{frame}) in a single ```latex block. "
+        "Do NOT include any other frames, preamble, or document structure - just the ONE edited frame."
     )
-    user_prompt = f"Instruction: {instruction}\n\nFrame to edit:\n{frame_content}"
+    user_prompt = (
+        f"Instruction: {instruction}\n\n"
+        f"Full presentation context (for reference):\n"
+        f"```latex\n{beamer_code}\n```\n\n"
+        f"Frame #{frame_number} to edit (this is the ONLY frame you should modify and return):\n"
+        f"```latex\n{frame_content}\n```\n\n"
+        f"Please return ONLY the edited frame #{frame_number}, not the entire presentation."
+    )
 
     try:
         # Resolve API key and base_url (same as edit_slides)
