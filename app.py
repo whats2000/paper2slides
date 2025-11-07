@@ -10,6 +10,8 @@ from core import (
     compile_latex,
     search_arxiv,
     edit_slides,
+    edit_single_slide,
+    extract_frames_from_beamer,
     generate_pdf_id,
 )
 import base64
@@ -250,6 +252,14 @@ def main():
 
     if "run_full_pipeline" not in st.session_state:
         st.session_state.run_full_pipeline = False
+    
+    # Single-slide editing mode
+    if "edit_mode" not in st.session_state:
+        st.session_state.edit_mode = "full"  # "full" or "single"
+    if "selected_frame_number" not in st.session_state:
+        st.session_state.selected_frame_number = 1
+    if "total_frames" not in st.session_state:
+        st.session_state.total_frames = 0
 
     # Configure logger
     if "logger_configured" not in st.session_state:
@@ -491,6 +501,40 @@ def main():
             and st.session_state.paper_id
             and os.path.exists(f"source/{st.session_state.paper_id}/slides.tex")
         ):
+            # Read slides to get total frame count
+            slides_tex_path = f"source/{st.session_state.paper_id}/slides.tex"
+            with open(slides_tex_path, "r") as f:
+                beamer_code = f.read()
+            
+            frames = extract_frames_from_beamer(beamer_code)
+            st.session_state.total_frames = len(frames)
+            
+            # Edit mode selection
+            st.subheader("Edit Mode")
+            edit_mode = st.radio(
+                "Choose editing scope:",
+                options=["Full Slides", "Single Slide"],
+                index=0 if st.session_state.edit_mode == "full" else 1,
+                key="edit_mode_radio",
+                horizontal=True
+            )
+            st.session_state.edit_mode = "full" if edit_mode == "Full Slides" else "single"
+            
+            # If single-slide mode, show frame selector
+            if st.session_state.edit_mode == "single":
+                st.session_state.selected_frame_number = st.number_input(
+                    f"Select slide number (1-{st.session_state.total_frames}):",
+                    min_value=1,
+                    max_value=max(1, st.session_state.total_frames),
+                    value=st.session_state.selected_frame_number,
+                    step=1,
+                    key="frame_selector"
+                )
+                st.info(f"🎯 Editing will only affect slide {st.session_state.selected_frame_number}")
+            else:
+                st.info("📄 Editing will affect all slides in the presentation")
+
+            st.divider()
 
             # Display chat messages
             for message in st.session_state.messages:
@@ -511,22 +555,34 @@ def main():
                         with open(slides_tex_path, "r") as f:
                             beamer_code = f.read()
 
-                        new_beamer_code = edit_slides(
-                            beamer_code,
-                            prompt,
-                            st.session_state.openai_api_key,
-                            st.session_state.model_name,
-                        )
+                        # Choose editing function based on mode
+                        if st.session_state.edit_mode == "single":
+                            new_beamer_code = edit_single_slide(
+                                beamer_code,
+                                st.session_state.selected_frame_number,
+                                prompt,
+                                st.session_state.openai_api_key,
+                                st.session_state.model_name,
+                            )
+                            edit_message = f"Edited slide {st.session_state.selected_frame_number}"
+                        else:
+                            new_beamer_code = edit_slides(
+                                beamer_code,
+                                prompt,
+                                st.session_state.openai_api_key,
+                                st.session_state.model_name,
+                            )
+                            edit_message = "Edited all slides"
 
                         if new_beamer_code:
                             with open(slides_tex_path, "w") as f:
                                 f.write(new_beamer_code)
-                            st.info("Recompiling PDF with changes...")
+                            st.info(f"{edit_message}. Recompiling PDF with changes...")
                             if run_compile_step(
                                 st.session_state.paper_id,
                                 st.session_state.pdflatex_path,
                             ):
-                                st.success("PDF recompiled successfully!")
+                                st.success(f"✅ {edit_message}. PDF recompiled successfully!")
                                 st.session_state.pdf_path = (
                                     f"source/{st.session_state.paper_id}/slides.pdf"
                                 )
