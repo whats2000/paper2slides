@@ -62,35 +62,84 @@ def display_pdf(file_path):
     st.markdown(pdf_display, unsafe_allow_html=True)
 
 
-def display_pdf_as_images(file_path: str):
+def display_pdf_as_images(file_path: str, paper_id: str = None, enable_inline_edit: bool = False):
+    """
+    Display PDF as images with optional inline editing.
+    
+    Args:
+        file_path: Path to the PDF file
+        paper_id: Paper ID for editing (required if enable_inline_edit is True)
+        enable_inline_edit: Whether to show inline edit boxes beside each page
+    """
     try:
         doc = fitz.open(file_path)
     except Exception as e:
         st.error(f"Failed to open PDF: {e}")
-        return
+        return None
 
     page_count = doc.page_count
-    st.caption(f"Pages: {page_count}")
+    st.caption(f"Total Pages: {page_count}")
 
     # Heuristic: render all if small doc, otherwise let user choose
     render_all_default = page_count <= 15
-    render_all = st.checkbox("Render all pages", value=render_all_default)
+    render_all = st.checkbox("Display all pages", value=render_all_default)
 
     zoom = 2.0
     mat = fitz.Matrix(zoom, zoom)
 
     if render_all:
+        # Full display mode with inline edit boxes
         for i in range(page_count):
             page = doc.load_page(i)
             pix = page.get_pixmap(matrix=mat, alpha=False)
-            st.image(pix.tobytes("png"), width='stretch', caption=f"Page {i+1}")
+            
+            if enable_inline_edit:
+                # Create two columns: one for image, one for edit box
+                col_img, col_edit = st.columns([3, 1])
+                with col_img:
+                    st.image(pix.tobytes("png"), width='stretch', caption=f"Page {i+1}")
+                with col_edit:
+                    st.markdown(f"**Edit Page {i+1}**")
+                    edit_instruction = st.text_area(
+                        "Quick edit:",
+                        key=f"edit_page_{i+1}",
+                        placeholder="Enter edit instruction...",
+                        label_visibility="collapsed",
+                        height=100
+                    )
+                    if st.button("✏️ Edit", key=f"btn_edit_{i+1}", width='stretch'):
+                        if edit_instruction.strip():
+                            # Store edit request in session state
+                            st.session_state.pending_edit = {
+                                "frame_number": i + 1,
+                                "instruction": edit_instruction,
+                                "mode": "single"
+                            }
+                            st.rerun()
+            else:
+                st.image(pix.tobytes("png"), width='stretch', caption=f"Page {i+1}")
     else:
-        page_num = st.slider("Page", min_value=1, max_value=page_count, value=1)
+        # Single page display mode - the slider determines which page to edit
+        default_page = st.session_state.get("selected_frame_number", 1)
+        default_page = min(default_page, page_count)
+        
+        page_num = st.slider(
+            "Page", 
+            min_value=1, 
+            max_value=page_count, 
+            value=default_page,
+            key="pdf_page_slider"
+        )
+        
+        # Update selected frame number to match slider
+        st.session_state.selected_frame_number = page_num
+        
         page = doc.load_page(page_num - 1)
         pix = page.get_pixmap(matrix=mat, alpha=False)
         st.image(pix.tobytes("png"), width='stretch', caption=f"Page {page_num}")
 
     doc.close()
+    return page_count
 
 
 def get_arxiv_id_from_query(query: str) -> str | None:
@@ -255,10 +304,13 @@ def main():
     
     # Single-slide editing mode
     if "edit_mode" not in st.session_state:
-        st.session_state.edit_mode = "full"  # "full" or "single"
+        st.session_state.edit_mode = "single"  # "single" or "full"
     if "selected_frame_number" not in st.session_state:
         st.session_state.selected_frame_number = 1
     if "total_frames" not in st.session_state:
+        st.session_state.total_frames = 0
+    if "pending_edit" not in st.session_state:
+        st.session_state.pending_edit = None
         st.session_state.total_frames = 0
 
     # Configure logger
@@ -513,24 +565,18 @@ def main():
             st.subheader("Edit Mode")
             edit_mode = st.radio(
                 "Choose editing scope:",
-                options=["Full Slides", "Single Slide"],
-                index=0 if st.session_state.edit_mode == "full" else 1,
+                options=["Edit Current Page", "Edit All Slides"],
+                index=0 if st.session_state.get("edit_mode", "single") == "single" else 1,
                 key="edit_mode_radio",
-                horizontal=True
+                horizontal=True,
+                help="Single page mode: edits only the page shown in slider. All slides: edits entire presentation."
             )
-            st.session_state.edit_mode = "full" if edit_mode == "Full Slides" else "single"
+            st.session_state.edit_mode = "single" if edit_mode == "Edit Current Page" else "full"
             
-            # If single-slide mode, show frame selector
+            # Show info based on mode
             if st.session_state.edit_mode == "single":
-                st.session_state.selected_frame_number = st.number_input(
-                    f"Select slide number (1-{st.session_state.total_frames}):",
-                    min_value=1,
-                    max_value=max(1, st.session_state.total_frames),
-                    value=st.session_state.selected_frame_number,
-                    step=1,
-                    key="frame_selector"
-                )
-                st.info(f"🎯 Editing will only affect slide {st.session_state.selected_frame_number}")
+                current_page = st.session_state.get("selected_frame_number", 1)
+                st.info(f"🎯 Editing will only affect slide {current_page} (current page in viewer)")
             else:
                 st.info("📄 Editing will affect all slides in the presentation")
 
@@ -543,29 +589,46 @@ def main():
 
             # Chat input
             if prompt := st.chat_input("Your instructions to edit the slides..."):
-                st.session_state.messages.append({"role": "user", "content": prompt})
-                with st.chat_message("user"):
-                    st.markdown(prompt)
+                # Determine which frame to edit
+                current_frame = st.session_state.get("selected_frame_number", 1)
+                
+                # Add message with appropriate prefix
+                if st.session_state.edit_mode == "single":
+                    st.session_state.messages.append({"role": "user", "content": f"[Page {current_frame}] {prompt}"})
+                    with st.chat_message("user"):
+                        st.markdown(f"[Page {current_frame}] {prompt}")
+                else:
+                    st.session_state.messages.append({"role": "user", "content": f"[All Slides] {prompt}"})
+                    with st.chat_message("user"):
+                        st.markdown(f"[All Slides] {prompt}")
 
                 with st.chat_message("assistant"):
-                    with st.spinner("Editing slides..."):
-                        slides_tex_path = (
-                            f"source/{st.session_state.paper_id}/slides.tex"
-                        )
-                        with open(slides_tex_path, "r") as f:
-                            beamer_code = f.read()
+                    if st.session_state.edit_mode == "single":
+                        with st.spinner(f"Editing slide {current_frame}..."):
+                            slides_tex_path = (
+                                f"source/{st.session_state.paper_id}/slides.tex"
+                            )
+                            with open(slides_tex_path, "r") as f:
+                                beamer_code = f.read()
 
-                        # Choose editing function based on mode
-                        if st.session_state.edit_mode == "single":
+                            # Edit single slide based on current page
                             new_beamer_code = edit_single_slide(
                                 beamer_code,
-                                st.session_state.selected_frame_number,
+                                current_frame,
                                 prompt,
                                 st.session_state.openai_api_key,
                                 st.session_state.model_name,
                             )
-                            edit_message = f"Edited slide {st.session_state.selected_frame_number}"
-                        else:
+                            edit_message = f"Edited slide {current_frame}"
+                    else:
+                        with st.spinner("Editing all slides..."):
+                            slides_tex_path = (
+                                f"source/{st.session_state.paper_id}/slides.tex"
+                            )
+                            with open(slides_tex_path, "r") as f:
+                                beamer_code = f.read()
+
+                            # Edit all slides
                             new_beamer_code = edit_slides(
                                 beamer_code,
                                 prompt,
@@ -574,23 +637,59 @@ def main():
                             )
                             edit_message = "Edited all slides"
 
-                        if new_beamer_code:
-                            with open(slides_tex_path, "w") as f:
-                                f.write(new_beamer_code)
-                            st.info(f"{edit_message}. Recompiling PDF with changes...")
-                            if run_compile_step(
-                                st.session_state.paper_id,
-                                st.session_state.pdflatex_path,
-                            ):
-                                st.success(f"✅ {edit_message}. PDF recompiled successfully!")
-                                st.session_state.pdf_path = (
-                                    f"source/{st.session_state.paper_id}/slides.pdf"
-                                )
-                                st.rerun()
-                            else:
-                                st.error("Failed to recompile PDF.")
+                    if new_beamer_code:
+                        with open(slides_tex_path, "w") as f:
+                            f.write(new_beamer_code)
+                        st.info(f"{edit_message}. Recompiling PDF with changes...")
+                        if run_compile_step(
+                            st.session_state.paper_id,
+                            st.session_state.pdflatex_path,
+                        ):
+                            st.success(f"✅ {edit_message}. PDF recompiled successfully!")
+                            st.session_state.pdf_path = (
+                                f"source/{st.session_state.paper_id}/slides.pdf"
+                            )
+                            st.rerun()
                         else:
-                            st.error("Failed to edit slides.")
+                            st.error("Failed to recompile PDF.")
+                    else:
+                        st.error("Failed to edit slides.")
+            
+            # Handle pending edit from inline edit boxes (full page view)
+            if st.session_state.get("pending_edit"):
+                edit_info = st.session_state.pending_edit
+                st.session_state.pending_edit = None  # Clear it
+                
+                with st.spinner(f"Editing slide {edit_info['frame_number']}..."):
+                    slides_tex_path = f"source/{st.session_state.paper_id}/slides.tex"
+                    with open(slides_tex_path, "r") as f:
+                        beamer_code = f.read()
+
+                    new_beamer_code = edit_single_slide(
+                        beamer_code,
+                        edit_info['frame_number'],
+                        edit_info['instruction'],
+                        st.session_state.openai_api_key,
+                        st.session_state.model_name,
+                    )
+                    
+                    if new_beamer_code:
+                        with open(slides_tex_path, "w") as f:
+                            f.write(new_beamer_code)
+                        
+                        if run_compile_step(
+                            st.session_state.paper_id,
+                            st.session_state.pdflatex_path,
+                        ):
+                            st.success(f"✅ Edited slide {edit_info['frame_number']} successfully!")
+                            st.session_state.pdf_path = (
+                                f"source/{st.session_state.paper_id}/slides.pdf"
+                            )
+                            st.rerun()
+                        else:
+                            st.error("Failed to recompile PDF.")
+                    else:
+                        st.error("Failed to edit slide.")
         else:
             st.info(
                 "Interactive editing will be available after successful pipeline completion."
@@ -659,7 +758,11 @@ def main():
                     file_name=f"{st.session_state.paper_id}_slides.pdf",
                     mime="application/pdf",
                 )
-            display_pdf_as_images(st.session_state.pdf_path)
+            display_pdf_as_images(
+                st.session_state.pdf_path,
+                paper_id=st.session_state.paper_id,
+                enable_inline_edit=True
+            )
 
         elif st.session_state.pipeline_status == "ready":
             st.info("🎯 Select a paper and run the pipeline to generate slides.")
