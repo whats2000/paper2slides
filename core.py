@@ -273,11 +273,13 @@ def get_frame_by_number(beamer_code: str, frame_number: int) -> str | None:
 def replace_frame_in_beamer(beamer_code: str, frame_number: int, new_frame_content: str) -> str | None:
     """
     Replace a specific frame in Beamer code with new content.
+    The new content can be one or multiple frames (e.g., when splitting a slide).
     
     Args:
         beamer_code: Full Beamer LaTeX code
         frame_number: Frame number to replace (1-indexed)
-        new_frame_content: New frame content (should include \\begin{frame} and \\end{frame})
+        new_frame_content: New frame content (should include \\begin{frame} and \\end{frame}).
+                          Can contain multiple frames if splitting.
         
     Returns:
         Updated Beamer code with the frame replaced, or None if frame not found
@@ -287,6 +289,7 @@ def replace_frame_in_beamer(beamer_code: str, frame_number: int, new_frame_conte
     for frame_num, _, start_pos, end_pos in frames:
         if frame_num == frame_number:
             # Replace the frame at the specific position
+            # new_frame_content can be one or multiple frames
             updated_code = beamer_code[:start_pos] + new_frame_content + beamer_code[end_pos:]
             return updated_code
     
@@ -302,17 +305,18 @@ def edit_single_slide(
 ) -> str | None:
     """
     Edits a specific slide/frame in the Beamer code based on the user's instruction.
-    Only the specified frame is edited, all other frames remain unchanged.
+    The specified frame is edited according to the instruction. If the instruction
+    asks to split the frame, multiple frames will be created to replace the original.
     
     Args:
         beamer_code: Full Beamer LaTeX code
         frame_number: Frame number to edit (1-indexed, matching PDF page numbers)
-        instruction: User's editing instruction
+        instruction: User's editing instruction (can include split instructions)
         api_key: API key for LLM
         model_name: Model name to use
         
     Returns:
-        Updated full Beamer code with only the specified frame edited, or None on error
+        Updated full Beamer code with the frame edited (or split into multiple frames), or None on error
     """
     # Extract the specific frame
     frame_content = get_frame_by_number(beamer_code, frame_number)
@@ -328,16 +332,18 @@ def edit_single_slide(
         "You are an expert in LaTeX and Beamer. "
         "You will be given the full Beamer presentation (with preamble and all frames) for context, "
         "and instructions to edit a specific frame. "
-        "Only output the updated SINGLE frame code (including \\begin{frame} and \\end{frame}) in a single ```latex block. "
-        "Do NOT include any other frames, preamble, or document structure - just the ONE edited frame."
+        "Output the updated frame code (including \\begin{frame} and \\end{frame}) in a single ```latex block. "
+        "IMPORTANT: If the instruction asks to split the frame into multiple slides/frames, you MUST return ALL the new frames. "
+        "Otherwise, return just the single edited frame. "
+        "Do NOT include preamble, document structure, or other unrelated frames."
     )
     user_prompt = (
         f"Instruction: {instruction}\n\n"
         f"Full presentation context (for reference):\n"
         f"```latex\n{beamer_code}\n```\n\n"
-        f"Frame #{frame_number} to edit (this is the ONLY frame you should modify and return):\n"
+        f"Frame #{frame_number} to edit:\n"
         f"```latex\n{frame_content}\n```\n\n"
-        f"Please return ONLY the edited frame #{frame_number}, not the entire presentation."
+        f"Please return the edited frame(s). If the instruction asks to split this frame, return ALL the resulting frames."
     )
 
     try:
