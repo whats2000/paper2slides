@@ -23,6 +23,7 @@ import fitz  # PyMuPDF for PDF text extraction
 import hashlib
 from PIL import Image
 import io
+from history import get_history_manager
 
 load_dotenv(override=True)
 
@@ -437,6 +438,7 @@ def compile_latex(
 ) -> bool:
     """
     Compiles a LaTeX file to PDF using pdflatex.
+    Saves version history after successful compilation.
     Returns True on success, False on failure.
     """
     try:
@@ -474,6 +476,8 @@ def compile_latex(
                 logging.warning(
                     "pdflatex returned non-zero exit but PDF was produced. Proceeding as success."
                 )
+                # Save to history on successful compile
+                _save_compile_history(full_tex_path, output_directory)
                 return True
             return False
 
@@ -483,12 +487,46 @@ def compile_latex(
             return False
 
         logging.info(f"Successfully compiled {tex_file_path} using {pdflatex_path}.")
+        
+        # Save to history after successful compilation
+        _save_compile_history(full_tex_path, output_directory)
+        
         return True
     except FileNotFoundError:
         logging.error(
             f"Failed to find the pdflatex compiler at '{pdflatex_path}'. Please check your config.yaml or system PATH."
         )
         return False
+
+
+def _save_compile_history(tex_file_path: Path, output_directory: str) -> None:
+    """
+    Save version history after successful compilation.
+    
+    Args:
+        tex_file_path: Path to the .tex file
+        output_directory: Directory containing the tex file (e.g., "source/2302.11553/")
+    """
+    try:
+        # Extract paper_id from output_directory
+        paper_id = Path(output_directory).name
+        if not paper_id:
+            # Try to get from parent path
+            paper_id = Path(output_directory).parts[-1] if Path(output_directory).parts else None
+        
+        if not paper_id:
+            logging.debug("Could not determine paper_id for history saving")
+            return
+        
+        # Read the tex content
+        tex_content = tex_file_path.read_text(encoding="utf-8", errors="ignore")
+        
+        # Save to history
+        history = get_history_manager(paper_id)
+        history.save_version(tex_content, "Successful compile")
+        
+    except Exception as e:
+        logging.debug(f"Failed to save compile history: {e}")
 
 
 def read_file(file_path: str) -> str:

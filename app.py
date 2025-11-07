@@ -14,6 +14,7 @@ from core import (
     extract_frames_from_beamer,
     generate_pdf_id,
 )
+from history import get_history_manager
 import base64
 import logging
 import subprocess
@@ -553,6 +554,55 @@ def main():
             and st.session_state.paper_id
             and os.path.exists(f"source/{st.session_state.paper_id}/slides.tex")
         ):
+            # Version History Section
+            history = get_history_manager(st.session_state.paper_id)
+            versions = history.list_versions()
+            
+            if versions:
+                with st.expander(f"📜 Version History ({len(versions)} saved versions)", expanded=False):
+                    st.caption("Versions are automatically saved after each successful compile")
+                    
+                    for idx, version in enumerate(versions):
+                        # Parse timestamp for display
+                        try:
+                            ts = datetime.datetime.fromisoformat(version['timestamp'])
+                            time_str = ts.strftime("%Y-%m-%d %H:%M:%S")
+                        except:
+                            time_str = version['timestamp']
+                        
+                        col_info, col_btn = st.columns([3, 1])
+                        with col_info:
+                            if idx == 0:
+                                st.markdown(f"**✅ Latest:** {time_str}")
+                            else:
+                                st.markdown(f"**{idx + 1}.** {time_str}")
+                            st.caption(version['description'])
+                        
+                        with col_btn:
+                            if idx > 0:  # Don't show restore for latest version (it's current)
+                                if st.button("Restore", key=f"restore_{version['filename']}"):
+                                    slides_tex_path = f"source/{st.session_state.paper_id}/slides.tex"
+                                    if history.restore_version(version['filename'], slides_tex_path):
+                                        st.success("✅ Restored! Recompiling...")
+                                        # Recompile after restore
+                                        if run_compile_step(
+                                            st.session_state.paper_id,
+                                            st.session_state.pdflatex_path,
+                                        ):
+                                            st.session_state.pdf_path = (
+                                                f"source/{st.session_state.paper_id}/slides.pdf"
+                                            )
+                                            st.rerun()
+                                        else:
+                                            st.error("Failed to recompile after restore.")
+                                    else:
+                                        st.error("Failed to restore version.")
+                        
+                        if idx < len(versions) - 1:
+                            st.divider()
+            
+            st.divider()
+            
             # Read slides to get total frame count
             slides_tex_path = f"source/{st.session_state.paper_id}/slides.tex"
             with open(slides_tex_path, "r") as f:
