@@ -185,6 +185,7 @@ def run_generate_step(paper_id: str, api_key: str, model_name: str, pdf_path: st
             use_pdfcrop=False,
             api_key=api_key,
             model_name=model_name,
+            base_url=st.session_state.openai_base_url if st.session_state.openai_base_url else None,
         )
     else:
         success = generate_slides(
@@ -193,6 +194,7 @@ def run_generate_step(paper_id: str, api_key: str, model_name: str, pdf_path: st
             use_pdfcrop=False,
             api_key=api_key,
             model_name=model_name,
+            base_url=st.session_state.openai_base_url if st.session_state.openai_base_url else None,
         )
 
     if success:
@@ -327,6 +329,9 @@ def main():
     if "model_name" not in st.session_state:
         load_dotenv(override=True)
         st.session_state.model_name = os.getenv("DEFAULT_MODEL", "gpt-4.1-2025-04-14")
+    if "openai_base_url" not in st.session_state:
+        load_dotenv(override=True)
+        st.session_state.openai_base_url = os.getenv("OPENAI_BASE_URL", "")
 
     if "run_full_pipeline" not in st.session_state:
         st.session_state.run_full_pipeline = False
@@ -508,6 +513,14 @@ def main():
         )
         st.caption(
             "Default model from .env (DEFAULT_MODEL). Can be overridden here."
+        )
+        st.session_state.openai_base_url = st.text_input(
+            "Base URL (e.g., https://api.openai.com/v1)",
+            value=st.session_state.openai_base_url,
+            placeholder="https://api.openai.com/v1"
+        )
+        st.caption(
+            "Default base URL from .env (OPENAI_BASE_URL). Leave empty to use .env value, or default OpenAI API if not set."
         )
         st.session_state.pdflatex_path = st.text_input(
             "Path to pdflatex compiler", value=st.session_state.pdflatex_path
@@ -768,6 +781,7 @@ def main():
                                 prompt,
                                 st.session_state.openai_api_key,
                                 st.session_state.model_name,
+                                st.session_state.openai_base_url if st.session_state.openai_base_url else None,
                             )
                             edit_message = f"Edited slide {current_frame}"
                     else:
@@ -784,6 +798,7 @@ def main():
                                 prompt,
                                 st.session_state.openai_api_key,
                                 st.session_state.model_name,
+                                st.session_state.openai_base_url if st.session_state.openai_base_url else None,
                             )
                             edit_message = "Edited all slides"
 
@@ -828,6 +843,7 @@ def main():
                         edit_info['instruction'],
                         st.session_state.openai_api_key,
                         st.session_state.model_name,
+                        st.session_state.openai_base_url if st.session_state.openai_base_url else None,
                     )
                     
                     if new_beamer_code:

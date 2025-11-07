@@ -152,7 +152,7 @@ def search_arxiv(query: str, max_results: int = 3) -> list[arxiv.Result]:
 
 
 def edit_slides(
-    beamer_code: str, instruction: str, api_key: str, model_name: str
+    beamer_code: str, instruction: str, api_key: str, model_name: str, base_url: str | None = None
 ) -> str | None:
     """
     Edits the Beamer code based on the user's instruction.
@@ -178,7 +178,10 @@ def edit_slides(
         client_kwargs = {"api_key": resolved_api_key}
         
         # Determine which provider is being used and set base_url
-        if resolved_api_key == os.environ.get("DASHSCOPE_API_KEY"):
+        if base_url:
+            # Use provided base_url (from UI)
+            client_kwargs["base_url"] = base_url
+        elif resolved_api_key == os.environ.get("DASHSCOPE_API_KEY"):
             # DashScope provider
             client_kwargs["base_url"] = (
                 os.environ.get("DASHSCOPE_BASE_URL") 
@@ -301,7 +304,8 @@ def edit_single_slide(
     frame_number: int,
     instruction: str, 
     api_key: str, 
-    model_name: str
+    model_name: str,
+    base_url: str | None = None
 ) -> str | None:
     """
     Edits a specific slide/frame in the Beamer code based on the user's instruction.
@@ -360,7 +364,10 @@ def edit_single_slide(
         client_kwargs = {"api_key": resolved_api_key}
         
         # Determine which provider is being used and set base_url
-        if resolved_api_key == os.environ.get("DASHSCOPE_API_KEY"):
+        if base_url:
+            # Use provided base_url (from UI)
+            client_kwargs["base_url"] = base_url
+        elif resolved_api_key == os.environ.get("DASHSCOPE_API_KEY"):
             # DashScope provider
             client_kwargs["base_url"] = (
                 os.environ.get("DASHSCOPE_BASE_URL") 
@@ -795,6 +802,7 @@ def process_stage(
     slides_tex_path: str,
     api_key: str,
     model_name: str,
+    base_url: str | None = None,
 ):
 
     system_message, user_prompt = prompt_manager.build_prompt(
@@ -819,7 +827,10 @@ def process_stage(
         client_kwargs = {"api_key": resolved_api_key}
         
         # Determine which provider is being used and set base_url
-        if resolved_api_key == os.environ.get("DASHSCOPE_API_KEY"):
+        if base_url:
+            # Use provided base_url (from UI)
+            client_kwargs["base_url"] = base_url
+        elif resolved_api_key == os.environ.get("DASHSCOPE_API_KEY"):
             # DashScope provider
             client_kwargs["base_url"] = (
                 os.environ.get("DASHSCOPE_BASE_URL") 
@@ -888,6 +899,7 @@ def generate_slides(
     use_pdfcrop: bool,
     api_key: str | None = None,
     model_name: str | None = None,
+    base_url: str | None = None,
 ) -> bool:
     # Use DEFAULT_MODEL from environment if model_name is not provided
     if model_name is None:
@@ -940,6 +952,7 @@ def generate_slides(
         slides_tex_path,
         api_key or "",
         model_name,
+        base_url,
     ):
         return False
 
@@ -954,6 +967,7 @@ def generate_slides(
         slides_tex_path,
         api_key or "",
         model_name,
+        base_url,
     ):
         return False
 
@@ -984,6 +998,7 @@ def generate_slides(
         slides_tex_path,
         api_key or "",
         model_name,
+        base_url,
     ):
         return False
 
@@ -1087,6 +1102,7 @@ def generate_slides_from_pdf(
         slides_tex_path,
         api_key or "",
         model_name,
+        base_url,
     ):
         return False
 
@@ -1101,6 +1117,7 @@ def generate_slides_from_pdf(
         slides_tex_path,
         api_key or "",
         model_name,
+        base_url,
     ):
         return False
 
@@ -1131,6 +1148,7 @@ def generate_slides_from_pdf(
         slides_tex_path,
         api_key or "",
         model_name,
+        base_url,
     ):
         return False
 
