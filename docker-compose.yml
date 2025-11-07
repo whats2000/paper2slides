@@ -1,0 +1,13 @@
+version: '3.8'
+
+services:
+  paper2slides:
+    build: .
+    ports:
+      - "8501:8501"
+    volumes:
+      - ./source:/app/source
+      - ./cache:/app/cache
+      - ./.env:/app/.env
+    stdin_open: true
+    tty: true

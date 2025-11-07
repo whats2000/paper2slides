@@ -17,7 +17,13 @@ To install:
     cd paper2slides
     ```
 
-2. Install the required Python packages:
+2. Install the required Python packages (using uv for faster and safer dependency resolution):
+    ```sh
+    pip install uv
+    uv pip install -r requirements.txt
+    ```
+
+   Or using pip:
     ```sh
     pip install -r requirements.txt
     ```
@@ -31,10 +37,45 @@ To install:
 
    Optionally check if you can compile the sample `test.tex` by `pdflatex test.tex`. Check if `test.pdf` is generated correctly. Optionally check `chktex` and `pdfcrop` are working.
 
-4. Set up your OpenAI API key:
+4. Configure environment variables (API keys, etc.):
+
+Copy `.env.example` to `.env` and fill in your API keys and settings.
     ```sh
-    export OPENAI_API_KEY='your-api-key'
+    cp .env.example .env
     ```
+
+## Docker Setup
+
+To avoid installing LaTeX and Python dependencies locally, you can use Docker. The Docker setup uses `uv` for faster and safer Python package installation.
+
+1. Ensure Docker is installed on your system.
+
+2. Clone the repository and navigate to the directory:
+    ```sh
+    git clone https://github.com/takashiishida/paper2slides.git
+    cd paper2slides
+    ```
+
+3. Set up your API keys in a `.env` file (see Configuration section above). For example:
+    ```sh
+    cp .env.example .env
+    # Then edit .env with your keys
+    ```
+
+4. Build and run the application using Docker Compose:
+    ```sh
+    docker-compose up --build
+    ```
+
+   This will start the Streamlit app on `http://localhost:8501`.
+
+   The `source` and `cache` directories are mounted as volumes to persist generated files.
+
+Alternatively, build and run manually:
+```sh
+docker build -t paper2slides .
+docker run -p 8501:8501 -v $(pwd)/source:/app/source -v $(pwd)/cache:/app/cache -e OPENAI_API_KEY=your-api-key paper2slides
+```
 
 ## Quick Start
 
