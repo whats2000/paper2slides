@@ -56,6 +56,21 @@ def get_existing_projects():
     return projects
 
 
+def append_chat_message(role: str, content: str, display: bool = True):
+    """
+    Append a message to the chat history and optionally display it.
+    
+    Args:
+        role: The role of the message sender ("user" or "assistant")
+        content: The content of the message
+        display: Whether to display the message immediately (default True)
+    """
+    st.session_state.messages.append({"role": role, "content": content})
+    if display:
+        with st.chat_message(role):
+            st.markdown(content)
+
+
 def display_pdf(file_path):
     with open(file_path, "rb") as f:
         base64_pdf = base64.b64encode(f.read()).decode("utf-8")
@@ -757,13 +772,9 @@ def main():
                 
                 # Add message with appropriate prefix
                 if st.session_state.edit_mode == "single":
-                    st.session_state.messages.append({"role": "user", "content": f"[Page {current_frame}] {prompt}"})
-                    with st.chat_message("user"):
-                        st.markdown(f"[Page {current_frame}] {prompt}")
+                    append_chat_message("user", f"[Page {current_frame}] {prompt}")
                 else:
-                    st.session_state.messages.append({"role": "user", "content": f"[All Slides] {prompt}"})
-                    with st.chat_message("user"):
-                        st.markdown(f"[All Slides] {prompt}")
+                    append_chat_message("user", f"[All Slides] {prompt}")
 
                 with st.chat_message("assistant"):
                     if st.session_state.edit_mode == "single":
@@ -832,6 +843,9 @@ def main():
                 edit_info = st.session_state.pending_edit
                 st.session_state.pending_edit = None  # Clear it
                 
+                # Append to chat history
+                append_chat_message("user", f"[Page {edit_info['frame_number']}] {edit_info['instruction']}", display=False)
+                
                 with st.spinner(f"Editing slide {edit_info['frame_number']}..."):
                     slides_tex_path = f"source/{st.session_state.paper_id}/slides.tex"
                     with open(slides_tex_path, "r") as f:
@@ -861,14 +875,19 @@ def main():
                                 current_version_key = f"current_version_{st.session_state.paper_id}"
                                 st.session_state[current_version_key] = latest_versions[0]['filename']
                             
+                            # Append assistant response to chat history
+                            append_chat_message("assistant", f"✅ Edited slide {edit_info['frame_number']} successfully!", display=False)
+                            
                             st.success(f"✅ Edited slide {edit_info['frame_number']} successfully!")
                             st.session_state.pdf_path = (
                                 f"source/{st.session_state.paper_id}/slides.pdf"
                             )
                             st.rerun()
                         else:
+                            append_chat_message("assistant", f"❌ Failed to recompile PDF after editing slide {edit_info['frame_number']}.", display=False)
                             st.error("Failed to recompile PDF.")
                     else:
+                        append_chat_message("assistant", f"❌ Failed to edit slide {edit_info['frame_number']}.", display=False)
                         st.error("Failed to edit slide.")
         else:
             st.info(
