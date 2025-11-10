@@ -175,7 +175,7 @@ def get_arxiv_id_from_query(query: str) -> str | None:
     return None
 
 
-def run_generate_step(paper_id: str, api_key: str, model_name: str, pdf_path: str | None = None) -> bool:
+def run_generate_step(paper_id: str, api_key: str, model_name: str, pdf_path: str | None = None, start_page: int | None = None, end_page: int | None = None) -> bool:
     """
     Step 1: Generate slides from arXiv paper or local PDF
     
@@ -184,10 +184,14 @@ def run_generate_step(paper_id: str, api_key: str, model_name: str, pdf_path: st
         api_key: API key for LLM
         model_name: Model name
         pdf_path: Path to uploaded PDF file (None for arXiv papers)
+        start_page: Starting page number (1-indexed, inclusive) for PDF processing
+        end_page: Ending page number (1-indexed, inclusive) for PDF processing
     """
     logging.info("=" * 60)
     if pdf_path:
         logging.info("GENERATING SLIDES FROM UPLOADED PDF")
+        if start_page or end_page:
+            logging.info(f"Page range: {start_page or 1} to {end_page or 'end'}")
     else:
         logging.info("GENERATING SLIDES FROM ARXIV PAPER")
     logging.info("=" * 60)
@@ -201,6 +205,8 @@ def run_generate_step(paper_id: str, api_key: str, model_name: str, pdf_path: st
             api_key=api_key,
             model_name=model_name,
             base_url=st.session_state.openai_base_url if st.session_state.openai_base_url else None,
+            start_page=start_page,
+            end_page=end_page,
         )
     else:
         success = generate_slides(
@@ -276,6 +282,8 @@ def run_full_pipeline(
     model_name: str,
     pdflatex_path: str,
     pdf_path: str | None = None,
+    start_page: int | None = None,
+    end_page: int | None = None,
 ) -> bool:
     """
     Full pipeline: generate + compile (equivalent to cmd_all, minus opening PDF)
@@ -286,13 +294,15 @@ def run_full_pipeline(
         model_name: Model name
         pdflatex_path: Path to pdflatex compiler
         pdf_path: Path to uploaded PDF file (None for arXiv papers)
+        start_page: Starting page number (1-indexed, inclusive) for PDF processing
+        end_page: Ending page number (1-indexed, inclusive) for PDF processing
     """
     logging.info("=" * 60)
     logging.info("RUNNING FULL PAPER2SLIDES PIPELINE")
     logging.info("=" * 60)
 
     # Step 1: Generate slides
-    if not run_generate_step(paper_id, api_key, model_name, pdf_path):
+    if not run_generate_step(paper_id, api_key, model_name, pdf_path, start_page, end_page):
         logging.error("Pipeline failed at slide generation step")
         return False
 
@@ -361,6 +371,12 @@ def main():
     if "pending_edit" not in st.session_state:
         st.session_state.pending_edit = None
         st.session_state.total_frames = 0
+    
+    # Page range for PDF processing
+    if "pdf_start_page" not in st.session_state:
+        st.session_state.pdf_start_page = None
+    if "pdf_end_page" not in st.session_state:
+        st.session_state.pdf_end_page = None
 
     # Configure logger
     if "logger_configured" not in st.session_state:
@@ -456,6 +472,52 @@ def main():
                 st.session_state.uploaded_file_name = uploaded_file.name
                 
                 st.success(f"PDF uploaded successfully! ID: {paper_id}")
+            
+            # Page range selection (only show if a PDF is uploaded)
+            if uploaded_file is not None:
+                st.subheader("📖 Page Range (Optional)")
+                st.caption("Specify a page range for processing long documents (e.g., a specific chapter). Leave empty to process the entire PDF.")
+                
+                # Get total pages from the PDF
+                if st.session_state.uploaded_pdf_path:
+                    try:
+                        doc = fitz.open(st.session_state.uploaded_pdf_path)
+                        total_pages = len(doc)
+                        doc.close()
+                        st.info(f"Total pages in PDF: {total_pages}")
+                        
+                        col1, col2 = st.columns(2)
+                        with col1:
+                            start_page = st.number_input(
+                                "Start Page",
+                                min_value=1,
+                                max_value=total_pages,
+                                value=None,
+                                placeholder="1",
+                                help="First page to process (1-indexed). Leave empty to start from page 1.",
+                                key="start_page_input"
+                            )
+                        with col2:
+                            end_page = st.number_input(
+                                "End Page",
+                                min_value=1,
+                                max_value=total_pages,
+                                value=None,
+                                placeholder=f"{total_pages}",
+                                help="Last page to process (1-indexed, inclusive). Leave empty to process until the last page.",
+                                key="end_page_input"
+                            )
+                        
+                        # Validate page range
+                        if start_page is not None and end_page is not None and start_page > end_page:
+                            st.error("⚠️ Start page must be less than or equal to end page.")
+                        else:
+                            st.session_state.pdf_start_page = start_page
+                            st.session_state.pdf_end_page = end_page
+                            if start_page or end_page:
+                                st.success(f"✓ Will process pages {start_page or 1} to {end_page or total_pages}")
+                    except Exception as e:
+                        st.error(f"Failed to read PDF: {e}")
         
         else:
             # Load previous project
@@ -908,6 +970,8 @@ def main():
                     st.session_state.openai_api_key,
                     st.session_state.model_name,
                     st.session_state.uploaded_pdf_path,  # None for arXiv papers
+                    st.session_state.pdf_start_page,  # Page range start
+                    st.session_state.pdf_end_page,     # Page range end
                 )
 
                 if success:

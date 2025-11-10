@@ -27,21 +27,34 @@ from history import get_history_manager
 
 load_dotenv(override=True)
 
-def extract_text_from_pdf(pdf_path: str) -> str:
+def extract_text_from_pdf(pdf_path: str, start_page: int | None = None, end_page: int | None = None) -> str:
     """
     Extract text content from a PDF file using PyMuPDF.
     
     Args:
         pdf_path: Path to the PDF file
+        start_page: Starting page number (1-indexed, inclusive). If None, starts from page 1.
+        end_page: Ending page number (1-indexed, inclusive). If None, goes to last page.
         
     Returns:
         Extracted text content
     """
     try:
         doc = fitz.open(pdf_path)
-        text_content = []
+        total_pages = len(doc)
         
-        for page_num in range(len(doc)):
+        # Validate and adjust page range (convert from 1-indexed to 0-indexed)
+        start_idx = (start_page - 1) if start_page is not None else 0
+        end_idx = end_page if end_page is not None else total_pages
+        
+        # Ensure valid range
+        start_idx = max(0, min(start_idx, total_pages - 1))
+        end_idx = max(start_idx + 1, min(end_idx, total_pages))
+        
+        logging.info(f"Extracting text from pages {start_idx + 1} to {end_idx} (out of {total_pages} total pages)")
+        
+        text_content = []
+        for page_num in range(start_idx, end_idx):
             page = doc.load_page(page_num)
             text_content.append(page.get_text())
         
@@ -52,26 +65,40 @@ def extract_text_from_pdf(pdf_path: str) -> str:
         raise
 
 
-def extract_images_from_pdf(pdf_path: str, output_dir: str) -> list[str]:
+def extract_images_from_pdf(pdf_path: str, output_dir: str, start_page: int | None = None, end_page: int | None = None) -> list[str]:
     """
     Extract images from a PDF file using PyMuPDF and save them to the output directory.
     
     Args:
         pdf_path: Path to the PDF file
         output_dir: Directory to save extracted images
+        start_page: Starting page number (1-indexed, inclusive). If None, starts from page 1.
+        end_page: Ending page number (1-indexed, inclusive). If None, goes to last page.
         
     Returns:
         List of relative paths to extracted images
     """
     try:
         doc = fitz.open(pdf_path)
+        total_pages = len(doc)
+        
+        # Validate and adjust page range (convert from 1-indexed to 0-indexed)
+        start_idx = (start_page - 1) if start_page is not None else 0
+        end_idx = end_page if end_page is not None else total_pages
+        
+        # Ensure valid range
+        start_idx = max(0, min(start_idx, total_pages - 1))
+        end_idx = max(start_idx + 1, min(end_idx, total_pages))
+        
+        logging.info(f"Extracting images from pages {start_idx + 1} to {end_idx} (out of {total_pages} total pages)")
+        
         image_paths = []
         figures_dir = Path(output_dir) / "figures"
         figures_dir.mkdir(parents=True, exist_ok=True)
         
         image_count = 0
         
-        for page_num in range(len(doc)):
+        for page_num in range(start_idx, end_idx):
             page = doc.load_page(page_num)
             image_list = page.get_images(full=True)
             
@@ -1015,6 +1042,8 @@ def generate_slides_from_pdf(
     model_name: str | None = None,
     base_url: str | None = None,
     dashscope_base_url: str | None = None,
+    start_page: int | None = None,
+    end_page: int | None = None,
 ) -> bool:
     """
     Generate slides from a local PDF file (not from arXiv).
@@ -1028,6 +1057,8 @@ def generate_slides_from_pdf(
         model_name: Model to use for generation (defaults to DEFAULT_MODEL env var)
         base_url: Base URL for OpenAI-compatible API (overrides env)
         dashscope_base_url: Base URL for DashScope API (overrides env)
+        start_page: Starting page number (1-indexed, inclusive). If None, starts from page 1.
+        end_page: Ending page number (1-indexed, inclusive). If None, goes to last page.
         
     Returns:
         True if successful, False otherwise
@@ -1050,8 +1081,11 @@ def generate_slides_from_pdf(
 
     # Extract text from PDF
     logging.info(f"Extracting text from PDF: {pdf_path}")
+    if start_page or end_page:
+        page_range_msg = f" (pages {start_page or 1} to {end_page or 'end'})"
+        logging.info(f"Using page range: {page_range_msg}")
     try:
-        pdf_text = extract_text_from_pdf(pdf_path)
+        pdf_text = extract_text_from_pdf(pdf_path, start_page, end_page)
         if not pdf_text.strip():
             logging.error("No text content extracted from PDF. The PDF might be image-based or empty.")
             return False
@@ -1062,7 +1096,7 @@ def generate_slides_from_pdf(
     # Extract images from PDF
     logging.info(f"Extracting images from PDF: {pdf_path}")
     try:
-        figure_paths = extract_images_from_pdf(pdf_path, tex_files_directory)
+        figure_paths = extract_images_from_pdf(pdf_path, tex_files_directory, start_page, end_page)
         if figure_paths:
             logging.info(f"Successfully extracted {len(figure_paths)} images from PDF")
         else:

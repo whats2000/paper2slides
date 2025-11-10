@@ -91,6 +91,13 @@ Or from a local PDF file:
 python paper2slides.py all --pdf /path/to/your/paper.pdf
 ```
 
+For long documents like books, you can specify a page range to process only a specific chapter:
+
+```sh
+# Process pages 50-75 (e.g., a specific chapter)
+python paper2slides.py all --pdf /path/to/book.pdf --start-page 50 --end-page 75
+```
+
 This will download the paper (or process your PDF), generate slides, compile to PDF, and open the presentation automatically.
 
 ## Usage
@@ -111,6 +118,9 @@ python paper2slides.py generate <arxiv_id>
 
 # Generate slides from local PDF
 python paper2slides.py generate --pdf /path/to/paper.pdf
+
+# Generate slides from a specific page range (e.g., chapter in a book)
+python paper2slides.py generate --pdf /path/to/book.pdf --start-page 50 --end-page 75
 
 # Generate slides (beamer) with linting and PDF cropping
 python paper2slides.py generate <arxiv_id> --use_linter --use_pdfcrop
@@ -154,6 +164,7 @@ streamlit run app.py
 - Choose between "arXiv Paper" or "Upload PDF" mode in the sidebar.
 - For arXiv: Enter an arXiv ID (e.g., 2505.18102) or a search query in the sidebar.
 - For PDF: Upload a PDF file directly from your computer.
+  - **Page Range Selection**: When uploading a PDF, you can optionally specify a page range to process only a specific section (e.g., a chapter from a book). This is useful for long documents.
 - Click "Run Full Pipeline" to generate slides and compile the PDF, or use "Generate Only" / "Compile Only".
 - After the pipeline completes, you can interactively edit the slides in the left panel; changes are recompiled automatically.
 

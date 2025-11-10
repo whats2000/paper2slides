@@ -184,6 +184,8 @@ def cmd_generate(args) -> int:
             model_name=args.model if hasattr(args, 'model') and args.model else None,
             base_url=args.base_url if hasattr(args, 'base_url') else None,
             dashscope_base_url=args.dashscope_base_url if hasattr(args, 'dashscope_base_url') else None,
+            start_page=getattr(args, 'start_page', None),
+            end_page=getattr(args, 'end_page', None),
         )
         
         if success:
@@ -387,6 +389,18 @@ Running without subcommand defaults to 'all':
         default=None,
         help="Model name to use (e.g., gpt-4.1-2025-04-14 or qwen-plus).",
     )
+    parser_generate.add_argument(
+        "--start-page",
+        type=int,
+        default=None,
+        help="Starting page number for PDF processing (1-indexed, inclusive). Only applicable with --pdf.",
+    )
+    parser_generate.add_argument(
+        "--end-page",
+        type=int,
+        default=None,
+        help="Ending page number for PDF processing (1-indexed, inclusive). Only applicable with --pdf.",
+    )
     parser_generate.set_defaults(func=cmd_generate)
 
     # Compile subcommand
@@ -446,6 +460,18 @@ Running without subcommand defaults to 'all':
         type=str,
         default=None,
         help="Base URL for DashScope API (overrides DASHSCOPE_BASE_URL env).",
+    )
+    parser_all.add_argument(
+        "--start-page",
+        type=int,
+        default=None,
+        help="Starting page number for PDF processing (1-indexed, inclusive). Only applicable with --pdf.",
+    )
+    parser_all.add_argument(
+        "--end-page",
+        type=int,
+        default=None,
+        help="Ending page number for PDF processing (1-indexed, inclusive). Only applicable with --pdf.",
     )
     parser_all.set_defaults(func=cmd_all)
 
