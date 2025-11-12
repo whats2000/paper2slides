@@ -284,6 +284,7 @@ def edit_slides(
                 model_name,
                 base_url,
                 max_retries=3,
+                use_paper_context=use_paper_context,
             )
             
             if compiled_code:
@@ -508,6 +509,7 @@ def edit_single_slide(
                 model_name,
                 base_url,
                 max_retries=3,
+                use_paper_context=use_paper_context,
             )
             
             if compiled_code:
@@ -532,6 +534,7 @@ def try_compile_with_fixes(
     model_name: str,
     base_url: str | None = None,
     max_retries: int = 3,
+    use_paper_context: bool = True,
 ) -> str | None:
     """
     Try to compile beamer code. If it fails, attempt to fix it using the revise stage.
@@ -552,6 +555,7 @@ def try_compile_with_fixes(
         model_name: Model name
         base_url: Optional base URL for API
         max_retries: Maximum number of fix attempts (default 3)
+        use_paper_context: Whether to include original paper source during fixes (default True)
         
     Returns:
         Successfully compiled beamer code, or None if all attempts failed
@@ -633,8 +637,11 @@ def try_compile_with_fixes(
             except Exception:
                 linter_log = "Linter not available."
             
-            # Load context for fix
-            latex_source = load_latex_source(tex_files_directory)
+            # Load context for fix (respecting use_paper_context flag)
+            if use_paper_context:
+                latex_source = load_latex_source(tex_files_directory)
+            else:
+                latex_source = ""
             figure_paths = find_image_files(tex_files_directory)
             
             # Use revise stage to fix
