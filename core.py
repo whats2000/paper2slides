@@ -27,6 +27,10 @@ from history import get_history_manager
 
 load_dotenv(override=True)
 
+
+# Initialize prompt manager
+prompt_manager = PromptManager()
+
 def extract_text_from_pdf(pdf_path: str, start_page: int | None = None, end_page: int | None = None) -> str:
     """
     Extract text content from a PDF file using PyMuPDF.
@@ -265,9 +269,33 @@ def edit_slides(
             ],
         )
         content = extract_content_from_response(response)
-        if content:
-            return sanitize_frametitles(content)
-        return None
+        if not content:
+            return None
+            
+        sanitized_content = sanitize_frametitles(content)
+        
+        # If paper_id is provided, try to compile and fix if needed
+        if paper_id:
+            logging.info("Attempting to compile edited slides...")
+            compiled_code = try_compile_with_fixes(
+                sanitized_content,
+                paper_id,
+                api_key,
+                model_name,
+                base_url,
+                max_retries=3,
+            )
+            
+            if compiled_code:
+                logging.info("✓ Edit successful and compiled")
+                return compiled_code
+            else:
+                logging.error("✗ Edit failed to compile after all fix attempts")
+                return None
+        else:
+            # No paper_id, return without compiling
+            return sanitized_content
+            
     except Exception as e:
         logging.error(f"Error editing slides: {e}")
         # Provide guidance for DashScope access issues
@@ -469,16 +497,221 @@ def edit_single_slide(
         if not updated_beamer_code:
             logging.error(f"Failed to replace frame {frame_number} in Beamer code")
             return None
+        
+        # If paper_id is provided, try to compile and fix if needed
+        if paper_id:
+            logging.info("Attempting to compile edited slide...")
+            compiled_code = try_compile_with_fixes(
+                updated_beamer_code,
+                paper_id,
+                api_key,
+                model_name,
+                base_url,
+                max_retries=3,
+            )
             
-        return updated_beamer_code
+            if compiled_code:
+                logging.info("✓ Single slide edit successful and compiled")
+                return compiled_code
+            else:
+                logging.error("✗ Single slide edit failed to compile after all fix attempts")
+                return None
+        else:
+            # No paper_id, return without compiling
+            return updated_beamer_code
         
     except Exception as e:
         logging.error(f"Error editing single slide: {e}")
         return None
 
 
-# Initialize prompt manager
-prompt_manager = PromptManager()
+def try_compile_with_fixes(
+    beamer_code: str,
+    paper_id: str,
+    api_key: str,
+    model_name: str,
+    base_url: str | None = None,
+    max_retries: int = 3,
+) -> str | None:
+    """
+    Try to compile beamer code. If it fails, attempt to fix it using the revise stage.
+    Retry up to max_retries times. If all attempts fail, return None.
+    
+    This function:
+    1. Saves beamer_code to a temp file
+    2. Tries to compile it
+    3. If compilation fails, uses revise stage to fix errors
+    4. Retries compilation with fixed code
+    5. Repeats up to max_retries times
+    6. Returns fixed code on success, None on failure
+    
+    Args:
+        beamer_code: Beamer LaTeX code to compile
+        paper_id: Paper ID
+        api_key: API key for LLM
+        model_name: Model name
+        base_url: Optional base URL for API
+        max_retries: Maximum number of fix attempts (default 3)
+        
+    Returns:
+        Successfully compiled beamer code, or None if all attempts failed
+    """
+    import tempfile
+    import shutil
+    
+    tex_files_directory = f"source/{paper_id}/"
+    slides_tex_path = f"{tex_files_directory}slides.tex"
+    pdflatex_path = get_pdflatex_path()
+    
+    # Create temp file for testing
+    temp_tex_path = f"{tex_files_directory}slides_temp.tex"
+    
+    current_code = beamer_code
+    
+    for attempt in range(max_retries + 1):  # +1 for initial attempt
+        # Save current code to temp file
+        try:
+            with open(temp_tex_path, "w", encoding="utf-8") as f:
+                f.write(current_code)
+        except Exception as e:
+            logging.error(f"Failed to write temp file: {e}")
+            return None
+        
+        # Try to compile the temp file
+        logging.info(f"Compilation attempt {attempt + 1}/{max_retries + 1}...")
+        
+        try:
+            # Pre-sanitize frametitles
+            sanitized = sanitize_frametitles(current_code)
+            if sanitized and sanitized != current_code:
+                with open(temp_tex_path, "w", encoding="utf-8") as f:
+                    f.write(sanitized)
+                current_code = sanitized
+        except Exception:
+            pass
+        
+        # Run pdflatex twice on temp file
+        command = [pdflatex_path, "-interaction=nonstopmode", "slides_temp.tex"]
+        result1 = subprocess.run(command, cwd=tex_files_directory, capture_output=True, text=True)
+        result2 = subprocess.run(command, cwd=tex_files_directory, capture_output=True, text=True)
+        
+        # Check if PDF was created
+        temp_pdf_path = f"{tex_files_directory}slides_temp.pdf"
+        if result2.returncode == 0 or Path(temp_pdf_path).exists():
+            # Compilation succeeded!
+            logging.info(f"✓ Compilation succeeded on attempt {attempt + 1}")
+            
+            # Clean up temp files
+            try:
+                for ext in [".aux", ".log", ".nav", ".out", ".snm", ".toc", ".pdf", ".fls", ".fdb_latexmk"]:
+                    temp_file = f"{tex_files_directory}slides_temp{ext}"
+                    if Path(temp_file).exists():
+                        Path(temp_file).unlink()
+            except Exception:
+                pass
+            
+            return current_code
+        
+        # Compilation failed
+        if attempt < max_retries:
+            # Try to fix it
+            logging.warning(f"✗ Compilation failed on attempt {attempt + 1}. Attempting to fix...")
+            
+            # Run chktex linter on temp file
+            try:
+                subprocess.run(
+                    ["chktex", "-o", "linter_temp.log", "slides_temp.tex"],
+                    cwd=tex_files_directory,
+                    capture_output=True,
+                )
+                linter_log_path = f"{tex_files_directory}linter_temp.log"
+                if Path(linter_log_path).exists():
+                    linter_log = read_file(linter_log_path)
+                    Path(linter_log_path).unlink()  # Clean up
+                else:
+                    linter_log = "No linter output available."
+            except Exception:
+                linter_log = "Linter not available."
+            
+            # Load context for fix
+            latex_source = load_latex_source(tex_files_directory)
+            figure_paths = find_image_files(tex_files_directory)
+            
+            # Use revise stage to fix
+            try:
+                system_message, user_prompt = prompt_manager.build_prompt(
+                    stage=3,  # revise stage
+                    latex_source=latex_source,
+                    beamer_code=current_code,
+                    linter_log=linter_log,
+                    figure_paths=figure_paths,
+                )
+                
+                # Call LLM to fix
+                resolved_api_key = (
+                    api_key
+                    or os.environ.get("OPENAI_API_KEY")
+                    or os.environ.get("DASHSCOPE_API_KEY")
+                )
+                if not resolved_api_key:
+                    logging.error("No API key available for fixing")
+                    break
+                    
+                client_kwargs = {"api_key": resolved_api_key}
+                if base_url:
+                    client_kwargs["base_url"] = base_url
+                elif resolved_api_key == os.environ.get("DASHSCOPE_API_KEY"):
+                    client_kwargs["base_url"] = (
+                        os.environ.get("DASHSCOPE_BASE_URL") 
+                        or "https://dashscope.aliyuncs.com/compatible-mode/v1"
+                    )
+                elif os.environ.get("OPENAI_BASE_URL"):
+                    client_kwargs["base_url"] = os.environ.get("OPENAI_BASE_URL")
+                
+                client = OpenAI(**client_kwargs)
+                
+                model_to_use = model_name
+                if (
+                    isinstance(client_kwargs.get("base_url"), str)
+                    and "dashscope.aliyuncs.com" in client_kwargs["base_url"]
+                    and isinstance(model_name, str)
+                    and (model_name.startswith("gpt-") or model_name.startswith("o1") or model_name.startswith("o3"))
+                ):
+                    model_to_use = os.environ.get("DASHSCOPE_MODEL", "qwen-plus")
+                
+                response = client.chat.completions.create(
+                    model=model_to_use,
+                    messages=[
+                        {"role": "system", "content": system_message},
+                        {"role": "user", "content": user_prompt},
+                    ],
+                )
+                
+                fixed_code = extract_content_from_response(response)
+                if fixed_code:
+                    current_code = sanitize_frametitles(fixed_code)
+                    logging.info(f"Generated fix for attempt {attempt + 2}")
+                else:
+                    logging.error("Failed to generate fix")
+                    break
+                    
+            except Exception as e:
+                logging.error(f"Error generating fix: {e}")
+                break
+        else:
+            # Max retries reached
+            logging.error(f"✗ All {max_retries + 1} compilation attempts failed")
+    
+    # Clean up temp files
+    try:
+        for ext in [".tex", ".aux", ".log", ".nav", ".out", ".snm", ".toc", ".pdf", ".fls", ".fdb_latexmk"]:
+            temp_file = f"{tex_files_directory}slides_temp{ext}"
+            if Path(temp_file).exists():
+                Path(temp_file).unlink()
+    except Exception:
+        pass
+    
+    return None
 
 
 def get_pdflatex_path() -> str:
