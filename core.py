@@ -179,17 +179,26 @@ def search_arxiv(query: str, max_results: int = 3) -> list[arxiv.Result]:
 
 
 def edit_slides(
-    beamer_code: str, instruction: str, api_key: str, model_name: str, base_url: str | None = None
+    beamer_code: str, instruction: str, api_key: str, model_name: str, base_url: str | None = None, latex_source: str = ""
 ) -> str | None:
     """
     Edits the Beamer code based on the user's instruction.
+    
+    Args:
+        beamer_code: Current Beamer LaTeX code
+        instruction: User's editing instruction
+        api_key: API key for LLM
+        model_name: Model name to use
+        base_url: Optional base URL for API
+        latex_source: Original paper LaTeX source (for context)
     """
-    system_message = (
-        "You are an expert in LaTeX and Beamer. "
-        "Please edit the following Beamer code based on the user's instruction. "
-        "Only output the full, updated Beamer code in a single ```latex block."
+    # Use PromptManager to get prompts from YAML config (interactive_edit stage)
+    system_message, user_prompt = prompt_manager.build_prompt(
+        stage="interactive_edit",
+        beamer_code=beamer_code,
+        user_instructions=instruction,
+        latex_source=latex_source,
     )
-    user_prompt = f"Instruction: {instruction}\n\nBeamer code:\n{beamer_code}"
 
     try:
         # Resolve API key and base_url (supports multiple LLM providers)
@@ -332,7 +341,8 @@ def edit_single_slide(
     instruction: str, 
     api_key: str, 
     model_name: str,
-    base_url: str | None = None
+    base_url: str | None = None,
+    latex_source: str = ""
 ) -> str | None:
     """
     Edits a specific slide/frame in the Beamer code based on the user's instruction.
@@ -345,6 +355,8 @@ def edit_single_slide(
         instruction: User's editing instruction (can include split instructions)
         api_key: API key for LLM
         model_name: Model name to use
+        base_url: Optional base URL for API
+        latex_source: Original paper LaTeX source (for context)
         
     Returns:
         Updated full Beamer code with the frame edited (or split into multiple frames), or None on error
@@ -355,26 +367,14 @@ def edit_single_slide(
         logging.error(f"Frame {frame_number} not found in Beamer code")
         return None
     
-    # Extract preamble (everything before first \begin{frame})
-    preamble_match = re.search(r'(.+?)\\begin\{frame\}', beamer_code, re.DOTALL)
-    preamble = preamble_match.group(1) if preamble_match else ""
-    
-    system_message = (
-        "You are an expert in LaTeX and Beamer. "
-        "You will be given the full Beamer presentation (with preamble and all frames) for context, "
-        "and instructions to edit a specific frame. "
-        "Output the updated frame code (including \\begin{frame} and \\end{frame}) in a single ```latex block. "
-        "IMPORTANT: If the instruction asks to split the frame into multiple slides/frames, you MUST return ALL the new frames. "
-        "Otherwise, return just the single edited frame. "
-        "Do NOT include preamble, document structure, or other unrelated frames."
-    )
-    user_prompt = (
-        f"Instruction: {instruction}\n\n"
-        f"Full presentation context (for reference):\n"
-        f"```latex\n{beamer_code}\n```\n\n"
-        f"Frame #{frame_number} to edit:\n"
-        f"```latex\n{frame_content}\n```\n\n"
-        f"Please return the edited frame(s). If the instruction asks to split this frame, return ALL the resulting frames."
+    # Use PromptManager to get prompts from YAML config (interactive_edit_single_slide stage)
+    system_message, user_prompt = prompt_manager.build_prompt(
+        stage="interactive_edit_single_slide",
+        beamer_code=beamer_code,
+        frame_number=frame_number,
+        frame_content=frame_content,
+        user_instructions=instruction,
+        latex_source=latex_source,
     )
 
     try:

@@ -204,14 +204,18 @@ class PromptManager:
     def build_prompt(
         self,
         stage: int | str,
-        latex_source: str,
+        latex_source: str = "",
         beamer_code: str = "",
         linter_log: str = "",
         figure_paths: list[str] | None = None,
+        user_instructions: str = "",
+        frame_number: int | None = None,
+        frame_content: str = "",
     ) -> tuple[str, str]:
         """
         Build (system_message, rendered_prompt) for the given stage.
-        Supports stage as 1/2/3 or 'initial'/'update'/'revise'.
+        Supports stage as 1/2/3 or 'initial'/'update'/'revise', 
+        as well as 'interactive_edit' and 'interactive_edit_single_slide'.
         """
         if isinstance(stage, int):
             stage_map = {1: "initial", 2: "update", 3: "revise"}
@@ -224,14 +228,26 @@ class PromptManager:
             stage_name = stage
 
         # Assemble variables expected by templates
-        vars: Dict[str, Any] = {
-            "latex_source": latex_source,
-            "figure_paths": " ".join(figure_paths or []),
-        }
-        if stage_name in ("update", "revise"):
+        vars: Dict[str, Any] = {}
+        
+        # Handle different stage types
+        if stage_name in ("initial", "update", "revise"):
+            vars["latex_source"] = latex_source
+            vars["figure_paths"] = " ".join(figure_paths or [])
+            if stage_name in ("update", "revise"):
+                vars["beamer_code"] = beamer_code
+            if stage_name == "revise":
+                vars["linter_log"] = linter_log
+        elif stage_name == "interactive_edit":
             vars["beamer_code"] = beamer_code
-        if stage_name == "revise":
-            vars["linter_log"] = linter_log
+            vars["user_instructions"] = user_instructions
+            vars["latex_source"] = latex_source
+        elif stage_name == "interactive_edit_single_slide":
+            vars["beamer_code"] = beamer_code
+            vars["frame_number"] = frame_number
+            vars["frame_content"] = frame_content
+            vars["user_instructions"] = user_instructions
+            vars["latex_source"] = latex_source
 
         system_message = self.get_system_message(stage_name)
         user_prompt = self.get_prompt(stage_name, **vars)

@@ -202,3 +202,29 @@ stages:
       {beamer_code}
 
       Now, provide the full, updated LaTeX source code for the Beamer presentation. Start with ```latex, provide the code, and end with ```.
+
+  interactive_edit_single_slide:
+    system: "You are a professional assistant specialized in LaTeX and Beamer. Your task is to edit a specific slide/frame in a Beamer presentation based on user instructions."
+    template: |
+      You are given a full Beamer presentation for context and instructions to edit a specific frame (slide).
+      
+      IMPORTANT Instructions:
+      - Output ONLY the updated frame code (including \\begin{{frame}} and \\end{{frame}}) in a single ```latex block.
+      - If the instruction asks to split the frame into multiple slides/frames, you MUST return ALL the new frames.
+      - Otherwise, return just the single edited frame.
+      - Do NOT include preamble, document structure (\\documentclass, \\begin{{document}}, etc.), or other unrelated frames.
+      - Maintain consistent LaTeX style and formatting with the rest of the presentation.
+
+      User Instructions:
+      "{user_instructions}"
+
+      Original Paper Source (for context):
+      {latex_source}
+
+      Full presentation context (for reference):
+      {beamer_code}
+
+      Frame #{frame_number} to edit:
+      {frame_content}
+
+      Now provide the edited frame(s): start with ```latex, provide the frame code, and end with ```. If splitting, return ALL resulting frames.
