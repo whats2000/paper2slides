@@ -23,6 +23,38 @@ from src.core import (
 from src.history import get_history_manager
 
 
+def extract_title_from_latex(latex_file_path: str) -> str:
+    """
+    Extract the title from a LaTeX file.
+    Looks for \title[short]{full} or \title{full} patterns.
+    
+    Args:
+        latex_file_path: Path to the LaTeX file
+        
+    Returns:
+        The extracted title, or the filename if title not found
+    """
+    try:
+        with open(latex_file_path, 'r', encoding='utf-8') as f:
+            content = f.read()
+        
+        # Look for \title command
+        import re
+        title_match = re.search(r'\\title(?:\[[^\]]*\])?\{([^}]+)\}', content)
+        if title_match:
+            title = title_match.group(1)
+            # Clean up LaTeX commands and extra whitespace
+            title = re.sub(r'\\[a-zA-Z]+\{[^}]*\}', '', title)  # Remove LaTeX commands
+            title = re.sub(r'\\[a-zA-Z]+', '', title)  # Remove simple LaTeX commands
+            title = title.strip()
+            return title
+        
+        return None
+    except Exception as e:
+        logging.warning(f"Failed to extract title from {latex_file_path}: {e}")
+        return None
+
+
 def get_existing_projects():
     """
     Scan the source directory for existing projects.
@@ -39,8 +71,12 @@ def get_existing_projects():
             slides_pdf = project_dir / "slides.pdf"
             
             if slides_tex.exists():
+                # Extract title from the LaTeX file
+                title = extract_title_from_latex(str(slides_tex))
+                
                 project_info = {
                     "id": project_dir.name,
+                    "title": title,
                     "has_tex": True,
                     "has_pdf": slides_pdf.exists(),
                     "pdf_path": str(slides_pdf) if slides_pdf.exists() else None,
@@ -535,7 +571,9 @@ def main():
                     mod_time = datetime.datetime.fromtimestamp(project["modified_time"])
                     time_str = mod_time.strftime("%Y-%m-%d %H:%M")
                     
-                    display_text = f"{status_icon} {project['id']} ({status_text}, {time_str})"
+                    # Use title if available, otherwise fall back to ID
+                    display_name = project.get("title") or project["id"]
+                    display_text = f"{status_icon} {display_name} ({status_text}, {time_str})"
                     project_options[display_text] = project
                 
                 # Add a placeholder option
