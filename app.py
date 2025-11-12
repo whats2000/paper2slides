@@ -19,6 +19,9 @@ from src.core import (
     edit_single_slide,
     extract_frames_from_beamer,
     generate_pdf_id,
+    generate_speaker_notes,
+    save_speaker_notes,
+    load_speaker_notes,
 )
 from src.history import get_history_manager
 
@@ -114,7 +117,7 @@ def display_pdf(file_path):
 
 def display_pdf_as_images(file_path: str, paper_id: str = None, enable_inline_edit: bool = False):
     """
-    Display PDF as images with optional inline editing.
+    Display PDF as images with optional inline editing and speaker notes.
     
     Args:
         file_path: Path to the PDF file
@@ -129,6 +132,11 @@ def display_pdf_as_images(file_path: str, paper_id: str = None, enable_inline_ed
 
     page_count = doc.page_count
     st.caption(f"Total Pages: {page_count}")
+    
+    # Load speaker notes if available
+    speaker_notes = None
+    if paper_id:
+        speaker_notes = load_speaker_notes(paper_id)
 
     # Heuristic: render all if small doc, otherwise let user choose
     render_all_default = page_count <= 15
@@ -187,6 +195,29 @@ def display_pdf_as_images(file_path: str, paper_id: str = None, enable_inline_ed
         page = doc.load_page(page_num - 1)
         pix = page.get_pixmap(matrix=mat, alpha=False)
         st.image(pix.tobytes("png"), width='stretch', caption=f"Page {page_num}")
+        
+        # Display speaker notes in single page mode
+        if speaker_notes is not None and paper_id:
+            current_notes = speaker_notes.get(page_num, "")
+            
+            edited_notes = st.text_area(
+                f"Speaker notes for slide {page_num}",
+                value=current_notes,
+                height=250,
+                key=f"speaker_notes_{page_num}",
+                placeholder="Speaker notes will appear here after generation. You can also edit them manually.",
+                help="These notes provide supplementary information for the presenter."
+            )
+            
+            # Save button for edited notes
+            if edited_notes != current_notes:
+                if st.button("💾 Save Notes", key=f"save_notes_{page_num}"):
+                    speaker_notes[page_num] = edited_notes
+                    if save_speaker_notes(paper_id, speaker_notes):
+                        st.success("Notes saved!")
+                        st.rerun()
+                    else:
+                        st.error("Failed to save notes")
 
     doc.close()
     return page_count
@@ -1069,13 +1100,68 @@ def main():
         ):
 
             st.subheader("📄 Generated Slides")
-            with open(st.session_state.pdf_path, "rb") as f:
-                st.download_button(
-                    "📥 Download PDF",
-                    f,
-                    file_name=f"{st.session_state.paper_id}_slides.pdf",
-                    mime="application/pdf",
-                )
+            
+            # Buttons row: Download PDF, Generate Speaker Notes, Download Speaker Notes
+            col_pdf, col_gen_notes, col_dl_notes = st.columns(3)
+            
+            with col_pdf:
+                with open(st.session_state.pdf_path, "rb") as f:
+                    st.download_button(
+                        "📥 Download as PDF",
+                        f,
+                        file_name=f"{st.session_state.paper_id}_slides.pdf",
+                        mime="application/pdf",
+                    )
+            
+            with col_gen_notes:
+                if st.button("🎤 Generate Speaker Notes", key="generate_speaker_notes"):
+                    st.session_state.generating_speaker_notes = True
+                    st.rerun()
+            
+            with col_dl_notes:
+                # Check if speaker notes exist
+                notes_file = f"source/{st.session_state.paper_id}/speaker_notes.json"
+                if os.path.exists(notes_file):
+                    speaker_notes = load_speaker_notes(st.session_state.paper_id)
+                    if speaker_notes:
+                        # Format notes as text for download
+                        notes_text = f"Speaker Notes for {st.session_state.paper_id}\n"
+                        notes_text += "=" * 60 + "\n\n"
+                        for slide_num in sorted(speaker_notes.keys()):
+                            notes_text += f"Slide {slide_num}:\n"
+                            notes_text += f"{speaker_notes[slide_num]}\n\n"
+                            notes_text += "-" * 60 + "\n\n"
+                        
+                        st.download_button(
+                            "📥 Download Speaker Notes",
+                            notes_text,
+                            file_name=f"{st.session_state.paper_id}_speaker_notes.txt",
+                            mime="text/plain",
+                        )
+                else:
+                    st.button("📥 Download Speaker Notes", disabled=True, help="Generate speaker notes first")
+            
+            # Handle speaker notes generation
+            if st.session_state.get("generating_speaker_notes", False):
+                st.session_state.generating_speaker_notes = False
+                
+                with st.spinner("🔄 Generating speaker notes for all slides... This may take a moment."):
+                    speaker_notes = generate_speaker_notes(
+                        st.session_state.paper_id,
+                        st.session_state.openai_api_key,
+                        st.session_state.model_name,
+                        st.session_state.openai_base_url if st.session_state.openai_base_url else None,
+                    )
+                    
+                    if speaker_notes:
+                        if save_speaker_notes(st.session_state.paper_id, speaker_notes):
+                            st.success(f"✅ Speaker notes generated successfully for {len(speaker_notes)} slides!")
+                            st.rerun()
+                        else:
+                            st.error("❌ Failed to save speaker notes")
+                    else:
+                        st.error("❌ Failed to generate speaker notes")
+            
             display_pdf_as_images(
                 st.session_state.pdf_path,
                 paper_id=st.session_state.paper_id,

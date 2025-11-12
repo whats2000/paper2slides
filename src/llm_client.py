@@ -118,6 +118,8 @@ def call_llm(
     api_key: str,
     model_name: str,
     base_url: str | None = None,
+    extract_code: bool = True,
+    code_language: str = "latex",
 ) -> str | None:
     """
     Call the LLM with system and user messages.
@@ -128,9 +130,11 @@ def call_llm(
         api_key: API key
         model_name: Model name
         base_url: Optional base URL
+        extract_code: Whether to extract code from markdown blocks (default True)
+        code_language: Language to extract if extract_code is True (default "latex")
         
     Returns:
-        Extracted content from response, or None on error
+        Extracted content from response (or raw content if extract_code is False), or None on error
     """
     try:
         client = create_llm_client(api_key, base_url)
@@ -145,10 +149,14 @@ def call_llm(
             ],
         )
         
-        content = extract_content_from_response(response)
-        if content:
-            return sanitize_frametitles(content)
-        return None
+        if extract_code:
+            content = extract_content_from_response(response, code_language)
+            if content:
+                return sanitize_frametitles(content)
+            return None
+        else:
+            # Return raw response content without code extraction
+            return response.choices[0].message.content
         
     except Exception as e:
         logging.error(f"Error calling LLM: {e}")

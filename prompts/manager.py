@@ -215,7 +215,7 @@ class PromptManager:
         """
         Build (system_message, rendered_prompt) for the given stage.
         Supports stage as 1/2/3 or 'initial'/'update'/'revise', 
-        as well as 'interactive_edit' and 'interactive_edit_single_slide'.
+        as well as 'interactive_edit', 'interactive_edit_single_slide', and 'generate_speaker_notes'.
         """
         if isinstance(stage, int):
             stage_map = {1: "initial", 2: "update", 3: "revise"}
@@ -246,7 +246,10 @@ class PromptManager:
             vars["beamer_code"] = beamer_code
             vars["frame_number"] = frame_number
             vars["frame_content"] = frame_content
+            vars["latex_source"] = latex_source
             vars["user_instructions"] = user_instructions
+        elif stage_name == "generate_speaker_notes":
+            vars["beamer_code"] = beamer_code
             vars["latex_source"] = latex_source
 
         system_message = self.get_system_message(stage_name)

@@ -228,3 +228,47 @@ stages:
       {frame_content}
 
       Now provide the edited frame(s): start with ```latex, provide the frame code, and end with ```. If splitting, return ALL resulting frames.
+
+  generate_speaker_notes:
+    system: "You are a PhD student preparing to present research slides to an academic audience. Your task is to write speaker notes that capture what you would actually SAY when presenting each slide, not just describe what's on the slide."
+    template: |
+      You are a PhD student preparing to present these research slides. Write speaker notes for ALL slides that capture what you would actually SAY during the presentation.
+      
+      IMPORTANT Guidelines - Write as if you're SPEAKING:
+      - Use first person ("Let me show you...", "I'll explain...", "Notice that...")
+      - Write conversational, natural speech ("So here's the key idea...", "Now, what's interesting is...")
+      - Include presentation transitions ("Moving to the next point...", "Let's dive deeper...")
+      - Add emphasis cues ("This is really important:", "The key insight here is...")
+      - Explain WHY things matter, not just WHAT they are
+      - Anticipate audience questions and address them
+      - Use phrases like "So what does this mean?", "Why should we care?", "The intuition here is..."
+      - Connect ideas: "Remember from the previous slide...", "This builds on..."
+      - Keep it natural and conversational (2-4 sentences per slide)
+      
+      BAD Example (too descriptive):
+      "This slide discusses state variables and introduces an extension where the demand parameter is unknown."
+      
+      GOOD Example (conversational, presentation-style):
+      "So now let me talk about state variables. What's interesting here is when we don't actually know the demand parameter - for example, if demand follows a Poisson distribution but we don't know the mean μ. In this case, our state needs to capture our beliefs about μ, which we update as we observe demand."
+      
+      OUTPUT FORMAT:
+      For each slide, provide the speaker notes in the following format:
+      
+      [SLIDE 1]
+      What you would say when presenting slide 1...
+      
+      [SLIDE 2]
+      What you would say when presenting slide 2...
+      
+      [SLIDE 3]
+      What you would say when presenting slide 3...
+      
+      And so on for ALL slides. Make sure to include [SLIDE N] markers for each slide number.
+      
+      Original Paper Content (for technical details):
+      {latex_source}
+      
+      Full Presentation (Beamer Code):
+      {beamer_code}
+      
+      Now generate speaker notes for ALL slides in a natural, conversational presentation style using the format specified above.

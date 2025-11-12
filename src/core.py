@@ -48,10 +48,10 @@ prompt_manager = PromptManager()
 
 
 def edit_slides(
-    beamer_code: str, 
-    instruction: str, 
-    api_key: str, 
-    model_name: str, 
+    beamer_code: str,
+    instruction: str,
+    api_key: str,
+    model_name: str,
     base_url: str | None = None,
     paper_id: str = "",
     use_paper_context: bool = True
@@ -69,7 +69,7 @@ def edit_slides(
         use_paper_context: Whether to include original paper source as context (default True)
     """
     logging.info("Editing slides based on user instruction...")
-    
+
     # Load latex_source from workspace if requested
     latex_source = ""
     if use_paper_context and paper_id:
@@ -78,7 +78,7 @@ def edit_slides(
             logging.info(f"Loaded original paper source for editing context (paper {paper_id})")
         else:
             logging.debug(f"No original paper source found for paper {paper_id}")
-    
+
     # Use PromptManager to get prompts from YAML config (interactive_edit stage)
     system_message, user_prompt = prompt_manager.build_prompt(
         stage="interactive_edit",
@@ -86,14 +86,14 @@ def edit_slides(
         user_instructions=instruction,
         latex_source=latex_source,
     )
-    
+
     try:
         content = call_llm(system_message, user_prompt, api_key, model_name, base_url)
         if not content:
             return None
-            
+
         sanitized_content = sanitize_frametitles(content)
-        
+
         # If paper_id is provided, try to compile and fix if needed
         if paper_id:
             logging.info("Attempting to compile edited slides...")
@@ -106,7 +106,7 @@ def edit_slides(
                 max_retries=3,
                 use_paper_context=use_paper_context,
             )
-            
+
             if compiled_code:
                 logging.info("✓ Edit successful and compiled")
                 return compiled_code
@@ -116,17 +116,17 @@ def edit_slides(
         else:
             # No paper_id, return without compiling
             return sanitized_content
-            
+
     except Exception as e:
         logging.error(f"Error editing slides: {e}")
         return None
 
 
 def edit_single_slide(
-    beamer_code: str, 
+    beamer_code: str,
     frame_number: int,
-    instruction: str, 
-    api_key: str, 
+    instruction: str,
+    api_key: str,
     model_name: str,
     base_url: str | None = None,
     paper_id: str = "",
@@ -151,7 +151,7 @@ def edit_single_slide(
         Updated full Beamer code with the frame edited (or split into multiple frames), or None on error
     """
     logging.info(f"Editing slide {frame_number} based on user instruction...")
-    
+
     # Load latex_source from workspace if requested
     latex_source = ""
     if use_paper_context and paper_id:
@@ -160,13 +160,13 @@ def edit_single_slide(
             logging.info(f"Loaded original paper source for editing context (paper {paper_id})")
         else:
             logging.debug(f"No original paper source found for paper {paper_id}")
-    
+
     # Extract the specific frame
     frame_content = get_frame_by_number(beamer_code, frame_number)
     if not frame_content:
         logging.error(f"Frame {frame_number} not found in Beamer code")
         return None
-    
+
     # Use PromptManager to get prompts from YAML config (interactive_edit_single_slide stage)
     system_message, user_prompt = prompt_manager.build_prompt(
         stage="interactive_edit_single_slide",
@@ -182,17 +182,17 @@ def edit_single_slide(
         if not edited_frame_content:
             logging.error("Failed to extract edited frame from LLM response")
             return None
-        
+
         # Sanitize the edited frame
         edited_frame_content = sanitize_frametitles(edited_frame_content)
-        
+
         # Replace the frame in the full Beamer code
         updated_beamer_code = replace_frame_in_beamer(beamer_code, frame_number, edited_frame_content)
-        
+
         if not updated_beamer_code:
             logging.error(f"Failed to replace frame {frame_number} in Beamer code")
             return None
-        
+
         # If paper_id is provided, try to compile and fix if needed
         if paper_id:
             logging.info("Attempting to compile edited slide...")
@@ -205,7 +205,7 @@ def edit_single_slide(
                 max_retries=3,
                 use_paper_context=use_paper_context,
             )
-            
+
             if compiled_code:
                 logging.info("✓ Single slide edit successful and compiled")
                 return compiled_code
@@ -215,7 +215,7 @@ def edit_single_slide(
         else:
             # No paper_id, return without compiling
             return updated_beamer_code
-        
+
     except Exception as e:
         logging.error(f"Error editing single slide: {e}")
         return None
@@ -246,7 +246,7 @@ def generate_slides(
     # Use DEFAULT_MODEL from environment if model_name is not provided
     if model_name is None:
         model_name = os.getenv("DEFAULT_MODEL", "gpt-4.1-2025-04-14")
-    
+
     # Define paths
     cache_dir = f"cache/{arxiv_id}"
     tex_files_directory = f"source/{arxiv_id}/"
@@ -389,7 +389,7 @@ def generate_slides_from_pdf(
         os.environ["OPENAI_BASE_URL"] = base_url
     if dashscope_base_url:
         os.environ["DASHSCOPE_BASE_URL"] = dashscope_base_url
-    
+
     # Define paths
     tex_files_directory = f"source/{paper_id}/"
     slides_tex_path = f"{tex_files_directory}slides.tex"
@@ -511,6 +511,176 @@ def generate_slides_from_pdf(
     return True
 
 
+def generate_speaker_notes(
+    paper_id: str,
+    api_key: str,
+    model_name: str,
+    base_url: str | None = None,
+) -> dict[int, str] | None:
+    """
+    Generate speaker notes for all slides in a presentation using a single LLM call.
+    
+    Args:
+        paper_id: Paper ID to load presentation and source from
+        api_key: API key for LLM
+        model_name: Model name to use
+        base_url: Optional base URL for API
+        
+    Returns:
+        Dictionary mapping frame number to speaker notes, or None on error
+    """
+    logging.info(f"Generating speaker notes for paper {paper_id}...")
+
+    # Load the slides and original paper source
+    slides_tex_path = f"source/{paper_id}/slides.tex"
+    if not os.path.exists(slides_tex_path):
+        logging.error(f"Slides file not found: {slides_tex_path}")
+        return None
+
+    with open(slides_tex_path, "r", encoding="utf-8") as f:
+        beamer_code = f.read()
+
+    # Load original paper source
+    latex_source = load_latex_source(f"source/{paper_id}/")
+    if not latex_source:
+        logging.warning(f"No original paper source found for paper {paper_id}")
+        latex_source = ""
+
+    # Extract all frames to know how many slides we have
+    frames = extract_frames_from_beamer(beamer_code)
+    if not frames:
+        logging.error("No frames found in Beamer code")
+        return None
+
+    logging.info(f"Found {len(frames)} slides. Generating speaker notes in a single call...")
+
+    # Use PromptManager to get prompts (no frame-specific info needed)
+    system_message, user_prompt = prompt_manager.build_prompt(
+        stage="generate_speaker_notes",
+        beamer_code=beamer_code,
+        latex_source=latex_source,
+    )
+
+    try:
+        # For speaker notes, we need the raw response text, not extracted code
+        response = call_llm(
+            system_message, 
+            user_prompt, 
+            api_key, 
+            model_name, 
+            base_url,
+            extract_code=False  # Get raw text response instead of extracting code blocks
+        )
+        
+        if not response:
+            logging.error("Failed to generate speaker notes from LLM - empty response")
+            return None
+        
+        if not response.strip():
+            logging.error("Failed to generate speaker notes from LLM - response is whitespace only")
+            return None
+
+        # Parse the response to extract notes for each slide
+        speaker_notes = {}
+
+        # Split by [SLIDE N] markers
+        import re
+        pattern = r'\[SLIDE\s+(\d+)\]\s*\n(.*?)(?=\[SLIDE\s+\d+\]|\Z)'
+        matches = re.findall(pattern, response, re.DOTALL)
+
+        if not matches:
+            # Maybe the LLM didn't follow the format exactly - try alternative patterns
+            logging.warning("No [SLIDE N] markers found. Trying alternative formats...")
+            
+            # Try "Slide N:" format
+            pattern2 = r'(?:Slide|SLIDE)\s+(\d+)[:\s]*\n(.*?)(?=(?:Slide|SLIDE)\s+\d+|\Z)'
+            matches = re.findall(pattern2, response, re.DOTALL | re.IGNORECASE)
+            
+            if not matches:
+                logging.error("Could not parse speaker notes from LLM response")
+                logging.error(f"Response preview: {response[:1000]}...")
+                return None
+
+        for slide_num_str, notes_text in matches:
+            slide_num = int(slide_num_str)
+            notes = notes_text.strip()
+            speaker_notes[slide_num] = notes
+
+        # Verify we got notes for all slides
+        if len(speaker_notes) != len(frames):
+            logging.warning(f"Expected notes for {len(frames)} slides but got {len(speaker_notes)}")
+            # Fill in missing slides with empty notes
+            for i in range(1, len(frames) + 1):
+                if i not in speaker_notes:
+                    speaker_notes[i] = ""
+                    logging.warning(f"No notes found for slide {i}")
+
+        logging.info(f"✓ Speaker notes generation completed for {len(speaker_notes)} slides")
+        return speaker_notes
+
+    except Exception as e:
+        logging.error(f"Error generating speaker notes: {e}")
+        import traceback
+        logging.error(traceback.format_exc())
+        return None
+
+
+def save_speaker_notes(paper_id: str, speaker_notes: dict[int, str]) -> bool:
+    """
+    Save speaker notes to a JSON file in the project directory.
+    
+    Args:
+        paper_id: Paper ID
+        speaker_notes: Dictionary mapping frame number to speaker notes
+        
+    Returns:
+        True if successful, False otherwise
+    """
+    import json
+
+    notes_file = f"source/{paper_id}/speaker_notes.json"
+
+    try:
+        with open(notes_file, "w", encoding="utf-8") as f:
+            json.dump(speaker_notes, f, indent=2, ensure_ascii=False)
+        logging.info(f"✓ Saved speaker notes to {notes_file}")
+        return True
+    except Exception as e:
+        logging.error(f"Failed to save speaker notes: {e}")
+        return False
+
+
+def load_speaker_notes(paper_id: str) -> dict[int, str] | None:
+    """
+    Load speaker notes from a JSON file in the project directory.
+    
+    Args:
+        paper_id: Paper ID
+        
+    Returns:
+        Dictionary mapping frame number to speaker notes, or None if not found
+    """
+    import json
+
+    notes_file = f"source/{paper_id}/speaker_notes.json"
+
+    if not os.path.exists(notes_file):
+        logging.debug(f"No speaker notes file found: {notes_file}")
+        return None
+
+    try:
+        with open(notes_file, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        # Convert string keys back to integers
+        speaker_notes = {int(k): v for k, v in data.items()}
+        logging.info(f"✓ Loaded speaker notes from {notes_file}")
+        return speaker_notes
+    except Exception as e:
+        logging.error(f"Failed to load speaker notes: {e}")
+        return None
+
+
+
 # Re-export commonly used functions for backwards compatibility
 __all__ = [
     'generate_slides',
@@ -525,4 +695,7 @@ __all__ = [
     'generate_pdf_id',
     'extract_text_from_pdf',
     'extract_images_from_pdf',
+    'generate_speaker_notes',
+    'save_speaker_notes',
+    'load_speaker_notes',
 ]
