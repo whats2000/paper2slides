@@ -813,6 +813,16 @@ def main():
             )
             st.session_state.edit_mode = "single" if edit_mode == "Edit Current Page" else "full"
             
+            # Paper context toggle (near editing mode for better UX)
+            if "use_paper_context" not in st.session_state:
+                st.session_state.use_paper_context = True
+            st.session_state.use_paper_context = st.checkbox(
+                "📝 Use original paper context when editing",
+                value=st.session_state.use_paper_context,
+                help="When enabled, the LLM will have access to the original paper source during editing, which helps maintain accuracy and consistency with the paper's content and notation. Disable to reduce token usage.",
+                key="use_paper_context_toggle"
+            )
+            
             # Show info based on mode
             if st.session_state.edit_mode == "single":
                 current_page = st.session_state.get("selected_frame_number", 1)
@@ -855,6 +865,8 @@ def main():
                                 st.session_state.openai_api_key,
                                 st.session_state.model_name,
                                 st.session_state.openai_base_url if st.session_state.openai_base_url else None,
+                                paper_id=st.session_state.paper_id,
+                                use_paper_context=st.session_state.use_paper_context,
                             )
                             edit_message = f"Edited slide {current_frame}"
                     else:
@@ -872,6 +884,8 @@ def main():
                                 st.session_state.openai_api_key,
                                 st.session_state.model_name,
                                 st.session_state.openai_base_url if st.session_state.openai_base_url else None,
+                                paper_id=st.session_state.paper_id,
+                                use_paper_context=st.session_state.use_paper_context,
                             )
                             edit_message = "Edited all slides"
 
@@ -920,6 +934,8 @@ def main():
                         st.session_state.openai_api_key,
                         st.session_state.model_name,
                         st.session_state.openai_base_url if st.session_state.openai_base_url else None,
+                        paper_id=st.session_state.paper_id,
+                        use_paper_context=st.session_state.use_paper_context,
                     )
                     
                     if new_beamer_code:

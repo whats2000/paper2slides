@@ -179,7 +179,13 @@ def search_arxiv(query: str, max_results: int = 3) -> list[arxiv.Result]:
 
 
 def edit_slides(
-    beamer_code: str, instruction: str, api_key: str, model_name: str, base_url: str | None = None, latex_source: str = ""
+    beamer_code: str, 
+    instruction: str, 
+    api_key: str, 
+    model_name: str, 
+    base_url: str | None = None,
+    paper_id: str = "",
+    use_paper_context: bool = True
 ) -> str | None:
     """
     Edits the Beamer code based on the user's instruction.
@@ -190,8 +196,18 @@ def edit_slides(
         api_key: API key for LLM
         model_name: Model name to use
         base_url: Optional base URL for API
-        latex_source: Original paper LaTeX source (for context)
+        paper_id: Paper ID to load latex source from workspace
+        use_paper_context: Whether to include original paper source as context (default True)
     """
+    # Load latex_source from workspace if requested
+    latex_source = ""
+    if use_paper_context and paper_id:
+        latex_source = load_latex_source(f"source/{paper_id}/")
+        if latex_source:
+            logging.info(f"Loaded original paper source for editing context (paper {paper_id})")
+        else:
+            logging.debug(f"No original paper source found for paper {paper_id}")
+    
     # Use PromptManager to get prompts from YAML config (interactive_edit stage)
     system_message, user_prompt = prompt_manager.build_prompt(
         stage="interactive_edit",
@@ -342,7 +358,8 @@ def edit_single_slide(
     api_key: str, 
     model_name: str,
     base_url: str | None = None,
-    latex_source: str = ""
+    paper_id: str = "",
+    use_paper_context: bool = True
 ) -> str | None:
     """
     Edits a specific slide/frame in the Beamer code based on the user's instruction.
@@ -356,11 +373,21 @@ def edit_single_slide(
         api_key: API key for LLM
         model_name: Model name to use
         base_url: Optional base URL for API
-        latex_source: Original paper LaTeX source (for context)
+        paper_id: Paper ID to load latex source from workspace
+        use_paper_context: Whether to include original paper source as context (default True)
         
     Returns:
         Updated full Beamer code with the frame edited (or split into multiple frames), or None on error
     """
+    # Load latex_source from workspace if requested
+    latex_source = ""
+    if use_paper_context and paper_id:
+        latex_source = load_latex_source(f"source/{paper_id}/")
+        if latex_source:
+            logging.info(f"Loaded original paper source for editing context (paper {paper_id})")
+        else:
+            logging.debug(f"No original paper source found for paper {paper_id}")
+    
     # Extract the specific frame
     frame_content = get_frame_by_number(beamer_code, frame_number)
     if not frame_content:
@@ -753,6 +780,44 @@ def save_additional_tex(contents: str, dest_dir: str) -> None:
         f.write(contents)
 
 
+def save_latex_source(latex_source: str, dest_dir: str) -> None:
+    """
+    Save the original LaTeX source to a file for later reference during editing.
+    
+    Args:
+        latex_source: The LaTeX source content
+        dest_dir: Directory to save the file (e.g., "source/2302.11553/")
+    """
+    path = Path(dest_dir) / "ORIGINAL_PAPER.tex"
+    Path(dest_dir).mkdir(parents=True, exist_ok=True)
+    try:
+        with open(path, "w", encoding="utf-8") as f:
+            f.write(latex_source)
+        logging.info(f"Saved original paper LaTeX source to {path}")
+    except Exception as e:
+        logging.warning(f"Failed to save original LaTeX source: {e}")
+
+
+def load_latex_source(source_dir: str) -> str:
+    """
+    Load the original LaTeX source from the saved file.
+    
+    Args:
+        source_dir: Directory containing the saved file (e.g., "source/2302.11553/")
+        
+    Returns:
+        LaTeX source content, or empty string if not available
+    """
+    path = Path(source_dir) / "ORIGINAL_PAPER.tex"
+    if path.exists():
+        try:
+            with open(path, "r", encoding="utf-8", errors="ignore") as f:
+                return f.read()
+        except Exception as e:
+            logging.warning(f"Failed to load original LaTeX source: {e}")
+    return ""
+
+
 def add_additional_tex(content: str) -> str:
     r"""
     Ensure that \input{ADDITIONAL.tex} is present. If missing, add near the top after documentclass.
@@ -956,6 +1021,9 @@ def generate_slides(
     add_tex_contents = build_additional_tex(defs_pkgs)
     save_additional_tex(add_tex_contents, tex_files_directory)
 
+    # Save the original LaTeX source for later reference during editing
+    save_latex_source(latex_source, tex_files_directory)
+
     # Ensure figures and images referenced by the paper are available under source/<id>/
     try:
         copy_image_assets_from_cache(arxiv_id, cache_dir, tex_files_directory)
@@ -1124,6 +1192,9 @@ def generate_slides_from_pdf(
 
 {pdf_text}
 """
+
+    # Save the extracted PDF text as the "original source" for later reference during editing
+    save_latex_source(formatted_source, tex_files_directory)
 
     # Stage 1: initial generation from PDF text
     logging.info("Stage 1: generating slides from PDF text...")
