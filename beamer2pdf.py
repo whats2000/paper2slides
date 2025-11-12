@@ -1,6 +1,6 @@
 import sys
 import logging
-from core import compile_latex
+from src.core import compile_latex
 
 if __name__ == "__main__":
     logging.basicConfig(

@@ -1,7 +1,6 @@
 """Beamer utility functions for manipulating Beamer presentation frames."""
 
 import re
-import logging
 
 
 def extract_frames_from_beamer(beamer_code: str) -> list[tuple[int, str, int, int]]:

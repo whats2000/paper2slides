@@ -1,12 +1,14 @@
 """Compiler functions for compiling LaTeX/Beamer files to PDF."""
 
-import subprocess
 import logging
-import yaml
+import subprocess
 from pathlib import Path
-from latex_utils import sanitize_frametitles
-from file_utils import read_file
-from history import get_history_manager
+
+import yaml
+
+from .file_utils import read_file
+from .history import get_history_manager
+from .latex_utils import sanitize_frametitles
 
 
 def get_pdflatex_path() -> str:
@@ -46,6 +48,7 @@ def compile_latex(
     """
     try:
         # Pre-sanitize frametitles in slides.tex to avoid '&' errors
+        full_tex_path = None
         try:
             full_tex_path = Path(output_directory) / tex_file_path
             if full_tex_path.exists():
@@ -80,7 +83,7 @@ def compile_latex(
                     "pdflatex returned non-zero exit but PDF was produced. Proceeding as success."
                 )
                 # Save to history on successful compile (only if save_history is True)
-                if save_history:
+                if save_history and full_tex_path is not None:
                     _save_compile_history(full_tex_path, output_directory)
                 return True
             return False
@@ -93,7 +96,7 @@ def compile_latex(
         logging.info(f"Successfully compiled {tex_file_path} using {pdflatex_path}.")
         
         # Save to history after successful compilation (only if save_history is True)
-        if save_history:
+        if save_history and full_tex_path is not None:
             _save_compile_history(full_tex_path, output_directory)
         
         return True
@@ -168,13 +171,11 @@ def try_compile_with_fixes(
         Successfully compiled beamer code, or None if all attempts failed
     """
     # Import here to avoid circular dependency
-    from llm_client import call_llm_for_revision
-    from latex_utils import load_latex_source
-    from file_utils import find_image_files
-    from prompts import PromptManager
-    
+    from .llm_client import call_llm_for_revision
+    from .latex_utils import load_latex_source
+    from .file_utils import find_image_files
+
     tex_files_directory = f"source/{paper_id}/"
-    slides_tex_path = f"{tex_files_directory}slides.tex"
     pdflatex_path = get_pdflatex_path()
     
     # Create temp file for testing
@@ -206,12 +207,11 @@ def try_compile_with_fixes(
         
         # Run pdflatex twice on temp file
         command = [pdflatex_path, "-interaction=nonstopmode", "slides_temp.tex"]
-        result1 = subprocess.run(command, cwd=tex_files_directory, capture_output=True, text=True)
-        result2 = subprocess.run(command, cwd=tex_files_directory, capture_output=True, text=True)
+        run_result = subprocess.run(command, cwd=tex_files_directory, capture_output=True, text=True)
         
         # Check if PDF was created
         temp_pdf_path = f"{tex_files_directory}slides_temp.pdf"
-        if result2.returncode == 0 or Path(temp_pdf_path).exists():
+        if run_result.returncode == 0 or Path(temp_pdf_path).exists():
             # Compilation succeeded!
             logging.info(f"✓ Compilation succeeded on attempt {attempt + 1}")
             

@@ -10,8 +10,8 @@ from pathlib import Path
 from dotenv import load_dotenv
 
 # Import from specialized modules
-from pdf_utils import extract_text_from_pdf, extract_images_from_pdf, generate_pdf_id
-from latex_utils import (
+from .pdf_utils import extract_text_from_pdf, extract_images_from_pdf, generate_pdf_id
+from .latex_utils import (
     extract_definitions_and_usepackage_lines,
     build_additional_tex,
     save_additional_tex,
@@ -20,28 +20,25 @@ from latex_utils import (
     add_additional_tex,
     sanitize_frametitles,
 )
-from beamer_utils import (
+from .beamer_utils import (
     extract_frames_from_beamer,
     get_frame_by_number,
     replace_frame_in_beamer,
 )
-from compiler import (
-    get_pdflatex_path,
+from .compiler import (
     compile_latex,
     try_compile_with_fixes,
 )
-from llm_client import (
+from .llm_client import (
     process_stage,
     call_llm,
-    create_llm_client,
-    get_model_name,
 )
-from arxiv_utils import (
+from .arxiv_utils import (
     search_arxiv,
     get_latex_from_arxiv_with_timeout,
     copy_image_assets_from_cache,
 )
-from file_utils import read_file, find_image_files
+from .file_utils import read_file, find_image_files
 from prompts import PromptManager
 
 load_dotenv(override=True)
@@ -71,6 +68,8 @@ def edit_slides(
         paper_id: Paper ID to load latex source from workspace
         use_paper_context: Whether to include original paper source as context (default True)
     """
+    logging.info("Editing slides based on user instruction...")
+    
     # Load latex_source from workspace if requested
     latex_source = ""
     if use_paper_context and paper_id:
@@ -87,7 +86,7 @@ def edit_slides(
         user_instructions=instruction,
         latex_source=latex_source,
     )
-
+    
     try:
         content = call_llm(system_message, user_prompt, api_key, model_name, base_url)
         if not content:
@@ -151,6 +150,8 @@ def edit_single_slide(
     Returns:
         Updated full Beamer code with the frame edited (or split into multiple frames), or None on error
     """
+    logging.info(f"Editing slide {frame_number} based on user instruction...")
+    
     # Load latex_source from workspace if requested
     latex_source = ""
     if use_paper_context and paper_id:

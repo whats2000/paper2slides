@@ -1,10 +1,16 @@
-import streamlit as st
-import os
-import time
-import arxiv
-import re
+import base64
 import datetime
-from core import (
+import logging
+import os
+import re
+import tempfile
+from pathlib import Path
+
+import fitz  # PyMuPDF
+import streamlit as st
+from dotenv import load_dotenv
+
+from src.core import (
     generate_slides,
     generate_slides_from_pdf,
     compile_latex,
@@ -14,15 +20,7 @@ from core import (
     extract_frames_from_beamer,
     generate_pdf_id,
 )
-from history import get_history_manager
-import base64
-import logging
-import subprocess
-import platform
-from pathlib import Path
-from dotenv import load_dotenv
-import fitz  # PyMuPDF
-import tempfile
+from src.history import get_history_manager
 
 
 def get_existing_projects():

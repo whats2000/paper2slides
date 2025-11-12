@@ -14,14 +14,15 @@ Usage examples:
 """
 
 import argparse
-import sys
-import os
-import subprocess
-import platform
 import logging
-from pathlib import Path
+import os
+import platform
 import re
-from core import generate_slides, generate_slides_from_pdf, generate_pdf_id
+import subprocess
+import sys
+from pathlib import Path
+
+from src.core import generate_slides_from_pdf, generate_pdf_id
 
 # Set up logging
 logging.basicConfig(
@@ -107,7 +108,7 @@ def get_arxiv_id(query: str) -> str | None:
     # Lazy import to avoid requiring arxiv for compile-only usage
     try:
         import arxiv  # type: ignore
-    except Exception as e:
+    except Exception:
         logger.error(
             "The 'arxiv' package is required for searching by query. Install it with 'pip install arxiv' or provide a direct arXiv ID."
         )
@@ -171,9 +172,6 @@ def cmd_generate(args) -> int:
         # Generate a unique ID for the PDF
         paper_id = generate_pdf_id(pdf_path)
         logger.info(f"Generated paper ID: {paper_id}")
-        
-        # Import the core function
-        from core import generate_slides_from_pdf
         
         success = generate_slides_from_pdf(
             pdf_path=pdf_path,
@@ -261,8 +259,6 @@ def cmd_all(args) -> int:
     logger.info("=" * 60)
 
     # Determine paper_id based on input type
-    paper_id = None
-    
     if hasattr(args, 'pdf') and args.pdf:
         # PDF file provided
         if not os.path.exists(args.pdf):

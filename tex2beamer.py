@@ -1,9 +1,10 @@
-import sys
-import logging
 import argparse
-import os
-from core import generate_slides
+import logging
+import sys
+
 from dotenv import load_dotenv
+
+from src.core import generate_slides
 
 # Load environment variables
 load_dotenv(override=True)

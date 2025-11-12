@@ -4,15 +4,17 @@ import logging
 import os
 import re
 from openai import OpenAI
+from openai.types.chat import ChatCompletionSystemMessageParam, ChatCompletionUserMessageParam, ChatCompletion
+
 from prompts import PromptManager
-from latex_utils import sanitize_frametitles
+from .latex_utils import sanitize_frametitles
 
 # Initialize prompt manager
 prompt_manager = PromptManager()
 
 
 def extract_content_from_response(
-    response: dict, language: str = "latex"
+    response: ChatCompletion, language: str = "latex"
 ) -> str | None:
     """
     :param response: Response from the language model
@@ -138,8 +140,8 @@ def call_llm(
         response = client.chat.completions.create(
             model=model_to_use,
             messages=[
-                {"role": "system", "content": system_message},
-                {"role": "user", "content": user_prompt},
+                ChatCompletionSystemMessageParam(content=system_message, role='system'),
+                ChatCompletionUserMessageParam(content=user_prompt, role='user'),
             ],
         )
         
@@ -240,8 +242,8 @@ def process_stage(
         response = client.chat.completions.create(
             model=model_to_use,
             messages=[
-                {"role": "system", "content": system_message},
-                {"role": "user", "content": user_prompt},
+                ChatCompletionSystemMessageParam(content=system_message, role='system'),
+                ChatCompletionUserMessageParam(content=user_prompt, role='user'),
             ],
         )
 

@@ -5,12 +5,11 @@ Allows reverting to previous working versions when LLM edits fail.
 """
 
 import json
-import os
-from pathlib import Path
-from datetime import datetime
-from typing import Optional, List, Dict
 import logging
 import shutil
+from datetime import datetime
+from pathlib import Path
+from typing import Optional, List, Dict
 
 
 class VersionHistory:

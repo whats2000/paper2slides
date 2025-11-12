@@ -102,7 +102,7 @@ def add_additional_tex(content: str) -> str:
         return content
     # Insert after documentclass line
     pattern = re.compile(
-        r"(\\documentclass\[[^\]]*\]\{beamer\}|\\documentclass\{beamer\})"
+        r"(\\documentclass\[[^]]*]\{beamer}|\\documentclass\{beamer})"
     )
 
     def _inserter(m: re.Match) -> str:
@@ -133,7 +133,7 @@ def sanitize_frametitles(beamer_code: str) -> str:
         sanitized_title = re.sub(r"(?<!\\)&", r"\\&", title)
         return f"{begin_frame}{sanitized_options}{{{sanitized_title}}}"
 
-    pattern_frame = re.compile(r"(\\begin\{frame\})\s*(\[[^\]]*\])?\s*\{([^}]*)\}")
+    pattern_frame = re.compile(r"(\\begin\{frame})\s*(\[[^]]*])?\s*\{([^}]*)}")
     beamer_code = pattern_frame.sub(repl_frame, beamer_code)
 
     # 2) Sanitize explicit \frametitle commands
@@ -153,7 +153,7 @@ def sanitize_frametitles(beamer_code: str) -> str:
         return f"{command}{sanitized_overlay}{sanitized_short_title}{{{sanitized_main_title}}}"
 
     pattern = re.compile(
-        r"(\\frametitle)\s*(<[^>]*>)?\s*(\[[^\]]*\])?\s*\{(.*?)\}", re.DOTALL
+        r"(\\frametitle)\s*(<[^>]*>)?\s*(\[[^]]*])?\s*\{(.*?)}", re.DOTALL
     )
 
     return pattern.sub(repl, beamer_code)
