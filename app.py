@@ -1105,11 +1105,21 @@ def main():
             col_pdf, col_gen_notes, col_dl_notes = st.columns(3)
             
             with col_pdf:
+                # Extract title from the LaTeX file for the filename
+                slides_tex_path = f"source/{st.session_state.paper_id}/slides.tex"
+                title = extract_title_from_latex(slides_tex_path)
+                if title:
+                    # Sanitize title for filename (remove special characters)
+                    safe_title = re.sub(r'[^\w\s-]', '', title).strip().replace(' ', '_')
+                    filename = f"{safe_title}_slides.pdf"
+                else:
+                    filename = f"{st.session_state.paper_id}_slides.pdf"
+                
                 with open(st.session_state.pdf_path, "rb") as f:
                     st.download_button(
                         "📥 Download as PDF",
                         f,
-                        file_name=f"{st.session_state.paper_id}_slides.pdf",
+                        file_name=filename,
                         mime="application/pdf",
                     )
             
@@ -1124,8 +1134,18 @@ def main():
                 if os.path.exists(notes_file):
                     speaker_notes = load_speaker_notes(st.session_state.paper_id)
                     if speaker_notes:
+                        # Extract title from the LaTeX file for the filename
+                        slides_tex_path = f"source/{st.session_state.paper_id}/slides.tex"
+                        title = extract_title_from_latex(slides_tex_path)
+                        if title:
+                            # Sanitize title for filename (remove special characters)
+                            safe_title = re.sub(r'[^\w\s-]', '', title).strip().replace(' ', '_')
+                            notes_filename = f"{safe_title}_speaker_notes.txt"
+                        else:
+                            notes_filename = f"{st.session_state.paper_id}_speaker_notes.txt"
+                        
                         # Format notes as text for download
-                        notes_text = f"Speaker Notes for {st.session_state.paper_id}\n"
+                        notes_text = f"Speaker Notes for {title or st.session_state.paper_id}\n"
                         notes_text += "=" * 60 + "\n\n"
                         for slide_num in sorted(speaker_notes.keys()):
                             notes_text += f"Slide {slide_num}:\n"
@@ -1135,7 +1155,7 @@ def main():
                         st.download_button(
                             "📥 Download Speaker Notes",
                             notes_text,
-                            file_name=f"{st.session_state.paper_id}_speaker_notes.txt",
+                            file_name=notes_filename,
                             mime="text/plain",
                         )
                 else:
