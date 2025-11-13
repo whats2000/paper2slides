@@ -15,7 +15,7 @@ def get_pdflatex_path() -> str:
     """
     Load the pdflatex path from the config file.
     """
-    config_path = Path(__file__).parent / "prompts" / "config.yaml"
+    config_path = Path(__file__).parent.parent / "prompts" / "config.yaml"
     try:
         with open(config_path, "r", encoding="utf-8") as f:
             config = yaml.safe_load(f)
