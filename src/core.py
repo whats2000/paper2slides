@@ -30,8 +30,8 @@ from .compiler import (
     try_compile_with_fixes,
 )
 from .llm_client import (
-    process_stage,
     call_llm,
+    prompt_manager,
 )
 from .arxiv_utils import (
     search_arxiv,
@@ -39,12 +39,8 @@ from .arxiv_utils import (
     copy_image_assets_from_cache,
 )
 from .file_utils import read_file, find_image_files
-from prompts import PromptManager
 
 load_dotenv(override=True)
-
-# Initialize prompt manager
-prompt_manager = PromptManager()
 
 
 def edit_slides(
@@ -221,6 +217,100 @@ def edit_single_slide(
         return None
 
 
+def _generate_slides_with_stages(
+    formatted_source: str,
+    tex_files_directory: str,
+    slides_tex_path: str,
+    figure_paths: list[str],
+    use_linter: bool,
+    api_key: str | None = None,
+    model_name: str | None = None,
+    base_url: str | None = None,
+) -> bool:
+    """
+    Generate slides in multiple stages from formatted source text.
+    Args:
+        formatted_source: Formatted source text (from PDF or LaTeX)
+        tex_files_directory: Directory to save tex files
+        slides_tex_path: Path to save generated slides.tex
+        figure_paths: List of figure paths to allow
+        use_linter: Whether to use ChkTeX linter
+        api_key: OpenAI/DashScope API key
+        model_name: Model to use for generation
+        base_url: Optional base URL for API
+    Returns:
+        True if successful, False otherwise
+    """
+    # Stage 1: initial generation from source
+    system_message, user_prompt = prompt_manager.build_prompt(
+        stage='initial',
+        latex_source=formatted_source,
+        beamer_code="",
+        linter_log="",
+        figure_paths=figure_paths,
+    )
+    result = call_llm(system_message, user_prompt, api_key or "", model_name, base_url)
+    if not result:
+        logging.error("Failed to generate slides at stage 1")
+        return False
+    with open(slides_tex_path, "w") as f:
+        f.write(result)
+    logging.info(f"Stage 1 completed. Slides saved to {slides_tex_path}")
+
+    logging.info("Stage 2: refining slides with update prompt...")
+    beamer_code = read_file(slides_tex_path)
+    system_message, user_prompt = prompt_manager.build_prompt(
+        stage='update',
+        latex_source=formatted_source,
+        beamer_code=beamer_code,
+        linter_log="",
+        figure_paths=figure_paths,
+    )
+    result = call_llm(system_message, user_prompt, api_key or "", model_name, base_url)
+    if not result:
+        logging.error("Failed to refine slides at stage 2")
+        return False
+    with open(slides_tex_path, "w") as f:
+        f.write(result)
+    logging.info(f"Stage 2 completed. Slides saved to {slides_tex_path}")
+
+    # Process stage 3 (if linter is used)
+    if not use_linter:
+        logging.info("Skipping linter stage. Generation complete.")
+        return True
+
+    logging.info("Stage 3: running chktex and revising slides...")
+    subprocess.run(
+        [
+            "chktex",
+            "-o",
+            "linter.log",
+            "slides.tex",
+        ],
+        cwd=tex_files_directory,
+    )
+    linter_log = read_file(f"{tex_files_directory}linter.log")
+
+    beamer_code = read_file(slides_tex_path)
+    system_message, user_prompt = prompt_manager.build_prompt(
+        stage='revise',
+        latex_source=formatted_source,
+        beamer_code=beamer_code,
+        linter_log=linter_log,
+        figure_paths=figure_paths,
+    )
+    result = call_llm(system_message, user_prompt, api_key or "", model_name, base_url)
+    if not result:
+        logging.error("Failed to revise slides at stage 3")
+        return False
+    with open(slides_tex_path, "w") as f:
+        f.write(result)
+    logging.info(f"Stage 3 completed. Slides saved to {slides_tex_path}")
+
+    logging.info("All stages completed successfully.")
+    return True
+
+
 def generate_slides(
     arxiv_id: str,
     use_linter: bool,
@@ -286,69 +376,17 @@ def generate_slides(
     # Find images under source dir to restrict allowed figures
     figure_paths = find_image_files(tex_files_directory)
 
-    # Stage 1: initial generation
-    logging.info("Stage 1: generating slides...")
-    if not process_stage(
-        1,
+    logging.info("Stage 1: generating slides with LaTeX source...")
+    return _generate_slides_with_stages(
         latex_source,
-        "",
-        "",
-        figure_paths,
+        tex_files_directory,
         slides_tex_path,
-        api_key or "",
+        figure_paths,
+        use_linter,
+        api_key,
         model_name,
         base_url,
-    ):
-        return False
-
-    logging.info("Stage 2: refining slides with update prompt...")
-    beamer_code = read_file(slides_tex_path)  # read generated beamer code from stage 1
-    if not process_stage(
-        2,
-        latex_source,
-        beamer_code,
-        "",
-        figure_paths,
-        slides_tex_path,
-        api_key or "",
-        model_name,
-        base_url,
-    ):
-        return False
-
-    # Process stage 3 (if linter is used)
-    if not use_linter:
-        logging.info("Skipping linter stage. Generation complete.")
-        return True
-
-    logging.info("Stage 3: running chktex and revising slides...")
-    subprocess.run(
-        [
-            "chktex",
-            "-o",
-            "linter.log",
-            "slides.tex",
-        ],
-        cwd=tex_files_directory,
     )
-    linter_log = read_file(f"{tex_files_directory}linter.log")
-
-    beamer_code = read_file(slides_tex_path)  # read updated beamer code from stage 2
-    if not process_stage(
-        3,
-        latex_source,
-        beamer_code,
-        linter_log,
-        figure_paths,
-        slides_tex_path,
-        api_key or "",
-        model_name,
-        base_url,
-    ):
-        return False
-
-    logging.info("All stages completed successfully.")
-    return True
 
 
 def generate_slides_from_pdf(
@@ -446,69 +484,17 @@ def generate_slides_from_pdf(
     # Save the extracted PDF text as the "original source" for later reference during editing
     save_latex_source(formatted_source, tex_files_directory)
 
-    # Stage 1: initial generation from PDF text
     logging.info("Stage 1: generating slides from PDF text...")
-    if not process_stage(
-        1,
+    return _generate_slides_with_stages(
         formatted_source,
-        "",
-        "",
-        figure_paths,
+        tex_files_directory,
         slides_tex_path,
-        api_key or "",
+        figure_paths,
+        use_linter,
+        api_key,
         model_name,
         base_url,
-    ):
-        return False
-
-    logging.info("Stage 2: refining slides with update prompt...")
-    beamer_code = read_file(slides_tex_path)
-    if not process_stage(
-        2,
-        formatted_source,
-        beamer_code,
-        "",
-        figure_paths,
-        slides_tex_path,
-        api_key or "",
-        model_name,
-        base_url,
-    ):
-        return False
-
-    # Process stage 3 (if linter is used)
-    if not use_linter:
-        logging.info("Skipping linter stage. Generation complete.")
-        return True
-
-    logging.info("Stage 3: running chktex and revising slides...")
-    subprocess.run(
-        [
-            "chktex",
-            "-o",
-            "linter.log",
-            "slides.tex",
-        ],
-        cwd=tex_files_directory,
     )
-    linter_log = read_file(f"{tex_files_directory}linter.log")
-
-    beamer_code = read_file(slides_tex_path)
-    if not process_stage(
-        3,
-        formatted_source,
-        beamer_code,
-        linter_log,
-        figure_paths,
-        slides_tex_path,
-        api_key or "",
-        model_name,
-        base_url,
-    ):
-        return False
-
-    logging.info("All stages completed successfully.")
-    return True
 
 
 def generate_speaker_notes(

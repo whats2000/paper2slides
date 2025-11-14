@@ -5,11 +5,11 @@ This module provides a PromptManager class that handles loading and rendering
 of prompt templates from YAML configuration files.
 """
 
-import yaml
-import os
-from pathlib import Path
-from typing import Dict, Any
 import logging
+from pathlib import Path
+from typing import Dict, Any, Literal
+
+import yaml
 
 logger = logging.getLogger(__name__)
 
@@ -203,7 +203,14 @@ class PromptManager:
     # New helper to assemble prompts consistently across stages
     def build_prompt(
         self,
-        stage: int | str,
+        stage: Literal[
+            'initial',
+            'update',
+            'revise',
+            'interactive_edit',
+            'interactive_edit_single_slide',
+            'generate_speaker_notes'
+        ],
         latex_source: str = "",
         beamer_code: str = "",
         linter_log: str = "",
@@ -214,46 +221,36 @@ class PromptManager:
     ) -> tuple[str, str]:
         """
         Build (system_message, rendered_prompt) for the given stage.
-        Supports stage as 1/2/3 or 'initial'/'update'/'revise', 
+        Supports stage names 'initial', 'update', 'revise',
         as well as 'interactive_edit', 'interactive_edit_single_slide', and 'generate_speaker_notes'.
         """
-        if isinstance(stage, int):
-            stage_map = {1: "initial", 2: "update", 3: "revise"}
-            if stage not in stage_map:
-                raise ValueError(
-                    "Invalid stage. Use 1, 2, 3 or 'initial'/'update'/'revise'."
-                )
-            stage_name = stage_map[stage]
-        else:
-            stage_name = stage
-
         # Assemble variables expected by templates
-        vars: Dict[str, Any] = {}
+        variables: Dict[str, Any] = {}
         
         # Handle different stage types
-        if stage_name in ("initial", "update", "revise"):
-            vars["latex_source"] = latex_source
-            vars["figure_paths"] = " ".join(figure_paths or [])
-            if stage_name in ("update", "revise"):
-                vars["beamer_code"] = beamer_code
-            if stage_name == "revise":
-                vars["linter_log"] = linter_log
-        elif stage_name == "interactive_edit":
-            vars["beamer_code"] = beamer_code
-            vars["user_instructions"] = user_instructions
-            vars["latex_source"] = latex_source
-        elif stage_name == "interactive_edit_single_slide":
-            vars["beamer_code"] = beamer_code
-            vars["frame_number"] = frame_number
-            vars["frame_content"] = frame_content
-            vars["latex_source"] = latex_source
-            vars["user_instructions"] = user_instructions
-        elif stage_name == "generate_speaker_notes":
-            vars["beamer_code"] = beamer_code
-            vars["latex_source"] = latex_source
+        if stage in ("initial", "update", "revise"):
+            variables["latex_source"] = latex_source
+            variables["figure_paths"] = " ".join(figure_paths or [])
+            if stage in ("update", "revise"):
+                variables["beamer_code"] = beamer_code
+            if stage == "revise":
+                variables["linter_log"] = linter_log
+        elif stage == "interactive_edit":
+            variables["beamer_code"] = beamer_code
+            variables["user_instructions"] = user_instructions
+            variables["latex_source"] = latex_source
+        elif stage == "interactive_edit_single_slide":
+            variables["beamer_code"] = beamer_code
+            variables["frame_number"] = frame_number
+            variables["frame_content"] = frame_content
+            variables["latex_source"] = latex_source
+            variables["user_instructions"] = user_instructions
+        elif stage == "generate_speaker_notes":
+            variables["beamer_code"] = beamer_code
+            variables["latex_source"] = latex_source
 
-        system_message = self.get_system_message(stage_name)
-        user_prompt = self.get_prompt(stage_name, **vars)
+        system_message = self.get_system_message(stage)
+        user_prompt = self.get_prompt(stage, **variables)
         return system_message, user_prompt
 
 

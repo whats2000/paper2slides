@@ -171,7 +171,7 @@ def try_compile_with_fixes(
         Successfully compiled beamer code, or None if all attempts failed
     """
     # Import here to avoid circular dependency
-    from .llm_client import call_llm_for_revision
+    from .llm_client import call_llm, prompt_manager
     from .latex_utils import load_latex_source
     from .file_utils import find_image_files
 
@@ -256,11 +256,16 @@ def try_compile_with_fixes(
             
             # Use revise stage to fix
             try:
-                fixed_code = call_llm_for_revision(
+                system_message, user_prompt = prompt_manager.build_prompt(
+                    stage='revise',
                     latex_source=latex_source,
                     beamer_code=current_code,
                     linter_log=linter_log,
                     figure_paths=figure_paths,
+                )
+                fixed_code = call_llm(
+                    system_message=system_message,
+                    user_prompt=user_prompt,
                     api_key=api_key,
                     model_name=model_name,
                     base_url=base_url,
