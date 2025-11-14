@@ -274,41 +274,36 @@ def _generate_slides_with_stages(
         f.write(result)
     logging.info(f"Stage 2 completed. Slides saved to {slides_tex_path}")
 
-    # Process stage 3 (if linter is used)
+    # Stage 3: Compile with fixes (if linter is enabled)
     if not use_linter:
-        logging.info("Skipping linter stage. Generation complete.")
+        logging.info("Skipping linter and compilation stage. Generation complete.")
         return True
 
-    logging.info("Stage 3: running chktex and revising slides...")
-    subprocess.run(
-        [
-            "chktex",
-            "-o",
-            "linter.log",
-            "slides.tex",
-        ],
-        cwd=tex_files_directory,
+    logging.info("Stage 3: Attempting to compile and fix if needed...")
+    # Extract paper_id from tex_files_directory
+    paper_id = Path(tex_files_directory).name or Path(tex_files_directory).parts[-1]
+    
+    compiled_code = try_compile_with_fixes(
+        result,
+        paper_id,
+        api_key or "",
+        model_name or "",
+        base_url,
+        max_retries=3,
+        use_paper_context=True,
     )
-    linter_log = read_file(f"{tex_files_directory}linter.log")
-
-    beamer_code = read_file(slides_tex_path)
-    system_message, user_prompt = prompt_manager.build_prompt(
-        stage='revise',
-        latex_source=formatted_source,
-        beamer_code=beamer_code,
-        linter_log=linter_log,
-        figure_paths=figure_paths,
-    )
-    result = call_llm(system_message, user_prompt, api_key or "", model_name, base_url)
-    if not result:
-        logging.error("Failed to revise slides at stage 3")
+    
+    if compiled_code:
+        with open(slides_tex_path, "w") as f:
+            f.write(compiled_code)
+        logging.info(f"Stage 3 completed. Compiled slides saved to {slides_tex_path}")
+        logging.info("All stages completed successfully.")
+        return True
+    else:
+        logging.error("Failed to compile slides at stage 3")
+        # Still save what we have, even if compilation failed
+        logging.warning("Slides saved but may not compile correctly.")
         return False
-    with open(slides_tex_path, "w") as f:
-        f.write(result)
-    logging.info(f"Stage 3 completed. Slides saved to {slides_tex_path}")
-
-    logging.info("All stages completed successfully.")
-    return True
 
 
 def generate_slides(
