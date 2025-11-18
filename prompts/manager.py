@@ -208,6 +208,7 @@ class PromptManager:
             'update',
             'revise',
             'interactive_edit',
+            'interactive_edit_preamble',
             'interactive_edit_single_slide',
             'generate_speaker_notes'
         ],
@@ -222,7 +223,8 @@ class PromptManager:
         """
         Build (system_message, rendered_prompt) for the given stage.
         Supports stage names 'initial', 'update', 'revise',
-        as well as 'interactive_edit', 'interactive_edit_single_slide', and 'generate_speaker_notes'.
+        as well as 'interactive_edit', 'interactive_edit_preamble',
+        'interactive_edit_single_slide', and 'generate_speaker_notes'.
         """
         # Assemble variables expected by templates
         variables: Dict[str, Any] = {}
@@ -239,12 +241,13 @@ class PromptManager:
             variables["beamer_code"] = beamer_code
             variables["user_instructions"] = user_instructions
             variables["latex_source"] = latex_source
-        elif stage == "interactive_edit_single_slide":
+        elif stage in ("interactive_edit_single_slide", "interactive_edit_preamble"):
             variables["beamer_code"] = beamer_code
-            variables["frame_number"] = frame_number
             variables["frame_content"] = frame_content
             variables["latex_source"] = latex_source
             variables["user_instructions"] = user_instructions
+            if stage == "interactive_edit_single_slide":
+                variables["frame_number"] = frame_number
         elif stage == "generate_speaker_notes":
             variables["beamer_code"] = beamer_code
             variables["latex_source"] = latex_source

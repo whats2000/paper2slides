@@ -68,6 +68,40 @@ def get_frame_by_number(beamer_code: str, frame_number: int) -> str | None:
     return None
 
 
+def get_preamble(beamer_code: str) -> str | None:
+    """
+    Extract the preamble (everything before \\begin{document}) from Beamer code.
+    This includes title, author, date, packages, and style configurations.
+    
+    Args:
+        beamer_code: Full Beamer LaTeX code
+        
+    Returns:
+        Preamble content (everything before \\begin{document}), or None if not found
+    """
+    match = re.search(r'^(.*?)\\begin\{document\}', beamer_code, re.DOTALL)
+    if match:
+        return match.group(1)
+    return None
+
+
+def replace_preamble(beamer_code: str, new_preamble: str) -> str | None:
+    """
+    Replace the preamble (everything before \\begin{document}) with new content.
+    
+    Args:
+        beamer_code: Full Beamer LaTeX code
+        new_preamble: New preamble content (should NOT include \\begin{document})
+        
+    Returns:
+        Updated Beamer code with the preamble replaced, or None if \\begin{document} not found
+    """
+    match = re.search(r'^(.*?)(\\begin\{document\}.*)$', beamer_code, re.DOTALL)
+    if match:
+        return new_preamble + match.group(2)
+    return None
+
+
 def replace_frame_in_beamer(beamer_code: str, frame_number: int, new_frame_content: str) -> str | None:
     """
     Replace a specific frame in Beamer code with new content.

@@ -17,7 +17,9 @@ from .arxiv_utils import (
 from .beamer_utils import (
     extract_frames_from_beamer,
     get_frame_by_number,
+    get_preamble,
     replace_frame_in_beamer,
+    replace_preamble,
 )
 from .compiler import (
     compile_latex,
@@ -157,21 +159,37 @@ def edit_single_slide(
         else:
             logging.debug(f"No original paper source found for paper {paper_id}")
 
-    # Extract the specific frame
-    frame_content = get_frame_by_number(beamer_code, frame_number)
-    if not frame_content:
-        logging.error(f"Frame {frame_number} not found in Beamer code")
-        return None
+    # Special case: frame_number == 1 means edit the preamble (title configuration)
+    if frame_number == 1:
+        frame_content = get_preamble(beamer_code)
+        if not frame_content:
+            logging.error("Preamble not found in Beamer code")
+            return None
+        
+        # Use preamble-specific prompt
+        system_message, user_prompt = prompt_manager.build_prompt(
+            stage="interactive_edit_preamble",
+            beamer_code=beamer_code,
+            frame_content=frame_content,
+            user_instructions=instruction,
+            latex_source=latex_source,
+        )
+    else:
+        # Extract the specific frame (existing behavior)
+        frame_content = get_frame_by_number(beamer_code, frame_number)
+        if not frame_content:
+            logging.error(f"Frame {frame_number} not found in Beamer code")
+            return None
 
-    # Use PromptManager to get prompts from YAML config (interactive_edit_single_slide stage)
-    system_message, user_prompt = prompt_manager.build_prompt(
-        stage="interactive_edit_single_slide",
-        beamer_code=beamer_code,
-        frame_number=frame_number,
-        frame_content=frame_content,
-        user_instructions=instruction,
-        latex_source=latex_source,
-    )
+        # Use PromptManager to get prompts from YAML config (interactive_edit_single_slide stage)
+        system_message, user_prompt = prompt_manager.build_prompt(
+            stage="interactive_edit_single_slide",
+            beamer_code=beamer_code,
+            frame_number=frame_number,
+            frame_content=frame_content,
+            user_instructions=instruction,
+            latex_source=latex_source,
+        )
 
     try:
         edited_frame_content = call_llm(system_message, user_prompt, api_key, model_name, base_url)
@@ -182,12 +200,17 @@ def edit_single_slide(
         # Sanitize the edited frame
         edited_frame_content = sanitize_frametitles(edited_frame_content)
 
-        # Replace the frame in the full Beamer code
-        updated_beamer_code = replace_frame_in_beamer(beamer_code, frame_number, edited_frame_content)
-
-        if not updated_beamer_code:
-            logging.error(f"Failed to replace frame {frame_number} in Beamer code")
-            return None
+        # Replace the frame or preamble in the full Beamer code
+        if frame_number == 1:
+            updated_beamer_code = replace_preamble(beamer_code, edited_frame_content)
+            if not updated_beamer_code:
+                logging.error("Failed to replace preamble in Beamer code")
+                return None
+        else:
+            updated_beamer_code = replace_frame_in_beamer(beamer_code, frame_number, edited_frame_content)
+            if not updated_beamer_code:
+                logging.error(f"Failed to replace frame {frame_number} in Beamer code")
+                return None
 
         # If paper_id is provided, try to compile and fix if needed
         if paper_id:

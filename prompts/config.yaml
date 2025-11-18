@@ -203,6 +203,34 @@ stages:
 
       Now, provide the full, updated LaTeX source code for the Beamer presentation. Start with ```latex, provide the code, and end with ```.
 
+  interactive_edit_preamble:
+    system: "You are a professional assistant specialized in LaTeX and Beamer. Your task is to edit the preamble (title page configuration and document setup) of a Beamer presentation."
+    template: |
+      You are given a Beamer presentation preamble and instructions to edit it.
+      The preamble includes: title, author, date, packages, theme settings, and style configurations.
+      
+      IMPORTANT Instructions:
+      - Output ONLY the updated preamble code in a single ```latex block.
+      - The preamble is everything BEFORE \\begin{{document}}.
+      - Include \\documentclass, \\usepackage, \\usetheme, \\title, \\author, \\date, and all style settings.
+      - Do NOT include \\begin{{document}}, \\maketitle, frame content, or \\end{{document}}.
+      - Maintain proper LaTeX structure and ensure all packages needed are included.
+      - When changing themes/colors, ensure they are valid Beamer themes.
+      
+      User Instructions:
+      "{user_instructions}"
+
+      Original Paper Source (for context):
+      {latex_source}
+
+      Full presentation context (for reference):
+      {beamer_code}
+
+      Current preamble to edit:
+      {frame_content}
+
+      Now provide the edited preamble: start with ```latex, provide the complete preamble code (ending just before \\begin{{document}}), and end with ```.
+
   interactive_edit_single_slide:
     system: "You are a professional assistant specialized in LaTeX and Beamer. Your task is to edit a specific slide/frame in a Beamer presentation based on user instructions."
     template: |
