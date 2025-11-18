@@ -941,7 +941,7 @@ def main():
                             slides_tex_path = (
                                 f"source/{st.session_state.paper_id}/slides.tex"
                             )
-                            with open(slides_tex_path, "r") as f:
+                            with open(slides_tex_path, "r", encoding='utf-8') as f:
                                 beamer_code = f.read()
 
                             # Edit single slide based on current page
@@ -961,7 +961,7 @@ def main():
                             slides_tex_path = (
                                 f"source/{st.session_state.paper_id}/slides.tex"
                             )
-                            with open(slides_tex_path, "r") as f:
+                            with open(slides_tex_path, "r", encoding='utf-8') as f:
                                 beamer_code = f.read()
 
                             # Edit all slides
@@ -977,7 +977,7 @@ def main():
                             edit_message = "Edited all slides"
 
                     if new_beamer_code:
-                        with open(slides_tex_path, "w") as f:
+                        with open(slides_tex_path, "w", encoding='utf-8') as f:
                             f.write(new_beamer_code)
                         st.info(f"{edit_message}. Recompiling PDF with changes...")
                         if run_compile_step(
@@ -1011,7 +1011,7 @@ def main():
                 
                 with st.spinner(f"Editing slide {edit_info['frame_number']}..."):
                     slides_tex_path = f"source/{st.session_state.paper_id}/slides.tex"
-                    with open(slides_tex_path, "r") as f:
+                    with open(slides_tex_path, "r", encoding='utf-8') as f:
                         beamer_code = f.read()
 
                     new_beamer_code = edit_single_slide(
@@ -1026,7 +1026,7 @@ def main():
                     )
                     
                     if new_beamer_code:
-                        with open(slides_tex_path, "w") as f:
+                        with open(slides_tex_path, "w", encoding='utf-8') as f:
                             f.write(new_beamer_code)
                         
                         if run_compile_step(

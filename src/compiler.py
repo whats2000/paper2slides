@@ -62,11 +62,11 @@ def compile_latex(
         command = [pdflatex_path, "-interaction=nonstopmode", tex_file_path]
         # First run
         result1 = subprocess.run(
-            command, cwd=output_directory, capture_output=True, text=True
+            command, cwd=output_directory, capture_output=True, text=True, encoding='utf-8', errors='replace'
         )
         # Second run to stabilize refs/outlines if needed
         result2 = subprocess.run(
-            command, cwd=output_directory, capture_output=True, text=True
+            command, cwd=output_directory, capture_output=True, text=True, encoding='utf-8', errors='replace'
         )
         combined_stdout = (result1.stdout or "") + "\n" + (result2.stdout or "")
         combined_stderr = (result1.stderr or "") + "\n" + (result2.stderr or "")
@@ -207,7 +207,7 @@ def try_compile_with_fixes(
         
         # Run pdflatex twice on temp file
         command = [pdflatex_path, "-interaction=nonstopmode", "slides_temp.tex"]
-        run_result = subprocess.run(command, cwd=tex_files_directory, capture_output=True, text=True)
+        run_result = subprocess.run(command, cwd=tex_files_directory, capture_output=True, text=True, encoding='utf-8', errors='replace')
         
         # Check if PDF was created
         temp_pdf_path = f"{tex_files_directory}slides_temp.pdf"
@@ -237,6 +237,8 @@ def try_compile_with_fixes(
                     ["chktex", "-o", "linter_temp.log", "slides_temp.tex"],
                     cwd=tex_files_directory,
                     capture_output=True,
+                    encoding='utf-8',
+                    errors='replace',
                 )
                 linter_log_path = f"{tex_files_directory}linter_temp.log"
                 if Path(linter_log_path).exists():
