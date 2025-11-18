@@ -373,6 +373,9 @@ def generate_slides(
         )
         return False
 
+    # Add arXiv URL comment at the top for reference
+    latex_source = f"% arXiv URL: https://arxiv.org/abs/{arxiv_id}\n\n" + latex_source
+
     # Extract definitions and packages to build ADDITIONAL.tex
     logging.info("Extracting definitions and packages...")
     defs_pkgs = extract_definitions_and_usepackage_lines(latex_source)
