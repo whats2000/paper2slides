@@ -75,7 +75,7 @@ stages:
 
       - Equations and math: If there is an important equation, definitely include it! Examples are the learning objective or the equations that might be used in a novel neural network architecture. In such cases, also define the symbols/notations used. However, please enter a new line or make the font size smaller for long expressions because it won't fit in the slide.
       - Visual: you may use bold to emphasize some important keywords. use itemize instead of writing paragraphs. but make sure to write the full sentence.
-      - Do not use the - character. It does not compile on my environment. Use - instead. Use abbreviations such as GANs, VAEs, SGD, LLM, and so on. use "w/" for "with" and "w/o" for "without".
+      - Do not use the `—` character. It does not compile on my environment. Use `---` instead. Use abbreviations such as GANs, VAEs, SGD, LLM, and so on. use "w/" for "with" and "w/o" for "without".
 
       Begin your latex code with the following.
       ```latex
