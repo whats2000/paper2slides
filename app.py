@@ -882,7 +882,7 @@ def main():
             
             # Read slides to get total frame count
             slides_tex_path = f"source/{st.session_state.paper_id}/slides.tex"
-            with open(slides_tex_path, "r") as f:
+            with open(slides_tex_path, "r", encoding='utf8') as f:
                 beamer_code = f.read()
             
             frames = extract_frames_from_beamer(beamer_code)
