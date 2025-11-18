@@ -2,23 +2,17 @@
 # This file contains the core orchestration logic for paper2slides,
 # coordinating between specialized modules.
 
-import subprocess
 import logging
 import os
 import shutil
 from pathlib import Path
+
 from dotenv import load_dotenv
 
-# Import from specialized modules
-from .pdf_utils import extract_text_from_pdf, extract_images_from_pdf, generate_pdf_id
-from .latex_utils import (
-    extract_definitions_and_usepackage_lines,
-    build_additional_tex,
-    save_additional_tex,
-    save_latex_source,
-    load_latex_source,
-    add_additional_tex,
-    sanitize_frametitles,
+from .arxiv_utils import (
+    search_arxiv,
+    get_latex_from_arxiv_with_timeout,
+    copy_image_assets_from_cache,
 )
 from .beamer_utils import (
     extract_frames_from_beamer,
@@ -29,16 +23,22 @@ from .compiler import (
     compile_latex,
     try_compile_with_fixes,
 )
+from .file_utils import read_file, find_image_files
+from .latex_utils import (
+    extract_definitions_and_usepackage_lines,
+    build_additional_tex,
+    save_additional_tex,
+    save_latex_source,
+    load_latex_source,
+    add_additional_tex,
+    sanitize_frametitles,
+)
 from .llm_client import (
     call_llm,
     prompt_manager,
 )
-from .arxiv_utils import (
-    search_arxiv,
-    get_latex_from_arxiv_with_timeout,
-    copy_image_assets_from_cache,
-)
-from .file_utils import read_file, find_image_files
+# Import from specialized modules
+from .pdf_utils import extract_text_from_pdf, extract_images_from_pdf, generate_pdf_id
 
 load_dotenv(override=True)
 

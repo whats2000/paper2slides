@@ -116,10 +116,11 @@ def get_arxiv_id(query: str) -> str | None:
 
     logger.info(f"Searching arXiv for: '{query}'")
     try:
+        client = arxiv.Client()
         search = arxiv.Search(
             query=query, max_results=3, sort_by=arxiv.SortCriterion.Relevance
         )
-        results = list(search.results())
+        results = list(client.results(search))
 
         if not results:
             logger.error("No papers found for your query.")

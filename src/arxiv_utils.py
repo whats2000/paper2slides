@@ -14,12 +14,13 @@ def search_arxiv(query: str, max_results: int = 3) -> list[arxiv.Result]:
     """
     Searches arXiv for a given query and returns the top results.
     """
+    client = arxiv.Client()
     search = arxiv.Search(
         query=query,
         max_results=max_results,
         sort_by=arxiv.SortCriterion.Relevance,
     )
-    return list(search.results())
+    return list(client.results(search))
 
 
 def _process_latex_source_worker(

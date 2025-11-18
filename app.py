@@ -423,6 +423,11 @@ def main():
         load_dotenv(override=True)
         st.session_state.openai_base_url = os.getenv("OPENAI_BASE_URL", "")
 
+    if "paper_title" not in st.session_state:
+        st.session_state.paper_title = None
+    if "paper_authors" not in st.session_state:
+        st.session_state.paper_authors = None
+
     if "run_full_pipeline" not in st.session_state:
         st.session_state.run_full_pipeline = False
     
@@ -484,12 +489,21 @@ def main():
                 st.session_state.pdf_path = None
                 st.session_state.messages = []
                 st.session_state.pipeline_status = "ready"
+                st.session_state.paper_title = None
+                st.session_state.paper_authors = None
 
                 # Check if query is direct arxiv_id or needs search
                 direct_id = get_arxiv_id_from_query(query)
                 if direct_id:
-                    st.session_state.arxiv_id = direct_id
-                    st.session_state.paper_id = direct_id
+                    results = search_arxiv(direct_id)
+                    if results and len(results) == 1:
+                        result = results[0]
+                        st.session_state.arxiv_id = result.get_short_id()
+                        st.session_state.paper_id = result.get_short_id()
+                        st.session_state.paper_title = result.title
+                        st.session_state.paper_authors = [a.name for a in result.authors]
+                    else:
+                        st.warning("Invalid arXiv ID or paper not found.")
                 else:
                     results = search_arxiv(query)
                     if results:
@@ -507,8 +521,14 @@ def main():
                     ):
                         st.session_state.arxiv_id = result.get_short_id()
                         st.session_state.paper_id = result.get_short_id()
+                        st.session_state.paper_title = result.title
+                        st.session_state.paper_authors = [a.name for a in result.authors]
                         del st.session_state.search_results
                         st.rerun()
+            
+            # Show selected paper info
+            if st.session_state.arxiv_id and 'paper_title' in st.session_state:
+                st.success(f"Selected: **{st.session_state.paper_title}** by {st.session_state.paper_authors[0]} et al.")
         
         elif st.session_state.input_mode == "upload":
             # PDF upload
