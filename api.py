@@ -61,7 +61,7 @@ app = FastAPI(
     description="Generate presentation slides from academic papers (arXiv or PDF)",
     version="1.0.0",
     docs_url="/docs",
-    redoc_url="/c",
+    redoc_url="/redoc",
 )
 
 # Job status tracking

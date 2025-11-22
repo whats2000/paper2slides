@@ -10,6 +10,12 @@ services:
       - ./source:/app/source
       - ./cache:/app/cache
       - ./.env:/app/.env
+      - ./app.py:/app/app.py
+      - ./paper2slides.py:/app/paper2slides.py
+      - ./tex2beamer.py:/app/tex2beamer.py
+      - ./beamer2pdf.py:/app/beamer2pdf.py
+      - ./src:/app/src
+      - ./prompts:/app/prompts
     stdin_open: true
     tty: true
     networks:
@@ -27,6 +33,9 @@ services:
       - ./cache:/app/cache
       - ./source:/app/source
       - ./.env:/app/.env
+      - ./api.py:/app/api.py
+      - ./src:/app/src
+      - ./prompts:/app/prompts
     environment:
       - OPENAI_API_KEY=${OPENAI_API_KEY}
       - OPENAI_BASE_URL=${OPENAI_BASE_URL}
