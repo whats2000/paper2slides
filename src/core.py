@@ -290,7 +290,7 @@ def _generate_slides_with_stages(
     if not result:
         logging.error("Failed to generate slides at stage 1")
         return False
-    with open(slides_tex_path, "w") as f:
+    with open(slides_tex_path, "w", encoding="utf-8") as f:
         f.write(result)
     logging.info(f"Stage 1 completed. Slides saved to {slides_tex_path}")
 
@@ -307,7 +307,7 @@ def _generate_slides_with_stages(
     if not result:
         logging.error("Failed to refine slides at stage 2")
         return False
-    with open(slides_tex_path, "w") as f:
+    with open(slides_tex_path, "w", encoding="utf-8") as f:
         f.write(result)
     logging.info(f"Stage 2 completed. Slides saved to {slides_tex_path}")
 
@@ -332,7 +332,7 @@ def _generate_slides_with_stages(
     )
     
     if compiled_code:
-        with open(slides_tex_path, "w") as f:
+        with open(slides_tex_path, "w", encoding="utf-8") as f:
             f.write(compiled_code)
         logging.info(f"Stage 3 completed. Compiled slides saved to {slides_tex_path}")
         logging.info("All stages completed successfully.")
