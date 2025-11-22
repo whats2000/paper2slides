@@ -145,6 +145,7 @@ def try_compile_with_fixes(
     base_url: str | None = None,
     max_retries: int = 3,
     use_paper_context: bool = True,
+    workspace_dir: str | None = None,
 ) -> str | None:
     """
     Try to compile beamer code. If it fails, attempt to fix it using the revise stage.
@@ -166,6 +167,7 @@ def try_compile_with_fixes(
         base_url: Optional base URL for API
         max_retries: Maximum number of fix attempts (default 3)
         use_paper_context: Whether to include original paper source during fixes (default True)
+        workspace_dir: Workspace directory path (defaults to source/{paper_id}/ if not provided)
         
     Returns:
         Successfully compiled beamer code, or None if all attempts failed
@@ -175,7 +177,11 @@ def try_compile_with_fixes(
     from .latex_utils import load_latex_source
     from .file_utils import find_image_files
 
-    tex_files_directory = f"source/{paper_id}/"
+    # Determine workspace directory
+    if workspace_dir is None:
+        workspace_dir = f"source/{paper_id}/"
+    
+    tex_files_directory = workspace_dir
     pdflatex_path = get_pdflatex_path()
     
     # Create temp file for testing

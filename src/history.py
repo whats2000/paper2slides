@@ -15,15 +15,19 @@ from typing import Optional, List, Dict
 class VersionHistory:
     """Manages version history for a paper's slides - saves only after successful compiles."""
     
-    def __init__(self, paper_id: str):
+    def __init__(self, paper_id: str, workspace_dir: str | None = None):
         """
         Initialize version history for a specific paper.
         
         Args:
             paper_id: The paper ID (e.g., arxiv ID or generated PDF ID)
+            workspace_dir: Workspace directory path (defaults to source/{paper_id}/ if not provided)
         """
         self.paper_id = paper_id
-        self.history_dir = Path(f"source/{paper_id}/edit_history")
+        # Determine workspace directory
+        if workspace_dir is None:
+            workspace_dir = f"source/{paper_id}/"
+        self.history_dir = Path(workspace_dir) / "edit_history"
         self.history_dir.mkdir(parents=True, exist_ok=True)
         
     def save_version(self, tex_content: str, description: str = "Successful compile") -> bool:
@@ -253,14 +257,15 @@ class VersionHistory:
             return False
 
 
-def get_history_manager(paper_id: str) -> VersionHistory:
+def get_history_manager(paper_id: str, workspace_dir: str | None = None) -> VersionHistory:
     """
     Get a version history manager for a specific paper.
     
     Args:
         paper_id: The paper ID
+        workspace_dir: Workspace directory path (defaults to source/{paper_id}/ if not provided)
         
     Returns:
         VersionHistory instance
     """
-    return VersionHistory(paper_id)
+    return VersionHistory(paper_id, workspace_dir)

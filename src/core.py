@@ -52,7 +52,8 @@ def edit_slides(
     model_name: str,
     base_url: str | None = None,
     paper_id: str = "",
-    use_paper_context: bool = True
+    use_paper_context: bool = True,
+    workspace_dir: str | None = None,
 ) -> str | None:
     """
     Edits the Beamer code based on the user's instruction.
@@ -65,13 +66,18 @@ def edit_slides(
         base_url: Optional base URL for API
         paper_id: Paper ID to load latex source from workspace
         use_paper_context: Whether to include original paper source as context (default True)
+        workspace_dir: Workspace directory path (defaults to source/{paper_id}/ if not provided)
     """
     logging.info("Editing slides based on user instruction...")
+
+    # Determine workspace directory
+    if workspace_dir is None:
+        workspace_dir = f"source/{paper_id}/"
 
     # Load latex_source from workspace if requested
     latex_source = ""
     if use_paper_context and paper_id:
-        latex_source = load_latex_source(f"source/{paper_id}/")
+        latex_source = load_latex_source(workspace_dir)
         if latex_source:
             logging.info(f"Loaded original paper source for editing context (paper {paper_id})")
         else:
@@ -103,6 +109,7 @@ def edit_slides(
                 base_url,
                 max_retries=3,
                 use_paper_context=use_paper_context,
+                workspace_dir=workspace_dir,
             )
 
             if compiled_code:
@@ -128,7 +135,8 @@ def edit_single_slide(
     model_name: str,
     base_url: str | None = None,
     paper_id: str = "",
-    use_paper_context: bool = True
+    use_paper_context: bool = True,
+    workspace_dir: str | None = None,
 ) -> str | None:
     """
     Edits a specific slide/frame in the Beamer code based on the user's instruction.
@@ -144,16 +152,21 @@ def edit_single_slide(
         base_url: Optional base URL for API
         paper_id: Paper ID to load latex source from workspace
         use_paper_context: Whether to include original paper source as context (default True)
+        workspace_dir: Workspace directory path (defaults to source/{paper_id}/ if not provided)
         
     Returns:
         Updated full Beamer code with the frame edited (or split into multiple frames), or None on error
     """
     logging.info(f"Editing slide {frame_number} based on user instruction...")
 
+    # Determine workspace directory
+    if workspace_dir is None:
+        workspace_dir = f"source/{paper_id}/"
+
     # Load latex_source from workspace if requested
     latex_source = ""
     if use_paper_context and paper_id:
-        latex_source = load_latex_source(f"source/{paper_id}/")
+        latex_source = load_latex_source(workspace_dir)
         if latex_source:
             logging.info(f"Loaded original paper source for editing context (paper {paper_id})")
         else:
@@ -223,6 +236,7 @@ def edit_single_slide(
                 base_url,
                 max_retries=3,
                 use_paper_context=use_paper_context,
+                workspace_dir=workspace_dir,
             )
 
             if compiled_code:
@@ -314,6 +328,7 @@ def _generate_slides_with_stages(
         base_url,
         max_retries=3,
         use_paper_context=True,
+        workspace_dir=tex_files_directory,
     )
     
     if compiled_code:
@@ -524,6 +539,7 @@ def generate_speaker_notes(
     model_name: str,
     base_url: str | None = None,
     instruction: str = "",
+    workspace_dir: str | None = None,
 ) -> dict[int, str] | None:
     """
     Generate speaker notes for all slides in a presentation using a single LLM call.
@@ -534,14 +550,19 @@ def generate_speaker_notes(
         model_name: Model name to use
         base_url: Optional base URL for API
         instruction: Optional custom instruction for speaker note generation
+        workspace_dir: Workspace directory path (defaults to source/{paper_id}/ if not provided)
         
     Returns:
         Dictionary mapping frame number to speaker notes, or None on error
     """
     logging.info(f"Generating speaker notes for paper {paper_id}...")
 
+    # Determine workspace directory
+    if workspace_dir is None:
+        workspace_dir = f"source/{paper_id}/"
+
     # Load the slides and original paper source
-    slides_tex_path = f"source/{paper_id}/slides.tex"
+    slides_tex_path = f"{workspace_dir}slides.tex"
     if not os.path.exists(slides_tex_path):
         logging.error(f"Slides file not found: {slides_tex_path}")
         return None
@@ -550,7 +571,7 @@ def generate_speaker_notes(
         beamer_code = f.read()
 
     # Load original paper source
-    latex_source = load_latex_source(f"source/{paper_id}/")
+    latex_source = load_latex_source(workspace_dir)
     if not latex_source:
         logging.warning(f"No original paper source found for paper {paper_id}")
         latex_source = ""
@@ -637,20 +658,25 @@ def generate_speaker_notes(
         return None
 
 
-def save_speaker_notes(paper_id: str, speaker_notes: dict[int, str]) -> bool:
+def save_speaker_notes(speaker_notes: dict[int, str], paper_id: str, workspace_dir: str | None = None) -> bool:
     """
     Save speaker notes to a JSON file in the project directory.
     
     Args:
-        paper_id: Paper ID
         speaker_notes: Dictionary mapping frame number to speaker notes
+        paper_id: Paper ID
+        workspace_dir: Workspace directory path (defaults to source/{paper_id}/ if not provided)
         
     Returns:
         True if successful, False otherwise
     """
     import json
 
-    notes_file = f"source/{paper_id}/speaker_notes.json"
+    # Determine workspace directory
+    if workspace_dir is None:
+        workspace_dir = f"source/{paper_id}/"
+
+    notes_file = f"{workspace_dir}speaker_notes.json"
 
     try:
         with open(notes_file, "w", encoding="utf-8") as f:
@@ -662,19 +688,24 @@ def save_speaker_notes(paper_id: str, speaker_notes: dict[int, str]) -> bool:
         return False
 
 
-def load_speaker_notes(paper_id: str) -> dict[int, str] | None:
+def load_speaker_notes(paper_id: str, workspace_dir: str | None = None) -> dict[int, str] | None:
     """
     Load speaker notes from a JSON file in the project directory.
     
     Args:
         paper_id: Paper ID
+        workspace_dir: Workspace directory path (defaults to source/{paper_id}/ if not provided)
         
     Returns:
         Dictionary mapping frame number to speaker notes, or None if not found
     """
     import json
 
-    notes_file = f"source/{paper_id}/speaker_notes.json"
+    # Determine workspace directory
+    if workspace_dir is None:
+        workspace_dir = f"source/{paper_id}/"
+
+    notes_file = f"{workspace_dir}speaker_notes.json"
 
     if not os.path.exists(notes_file):
         logging.debug(f"No speaker notes file found: {notes_file}")
