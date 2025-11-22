@@ -16,5 +16,8 @@ dependencies = [
     "python-dotenv",
     "unidecode",
     "streamlit",
-    "Pillow"
+    "Pillow",
+    "fastapi>=0.121.3",
+    "uvicorn[standard]>=0.38.0",
+    "python-multipart>=0.0.20",
 ]

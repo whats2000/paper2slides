@@ -1,6 +1,7 @@
 version: '3.8'
 
 services:
+  # Streamlit web app
   paper2slides:
     build: .
     ports:
@@ -11,3 +12,29 @@ services:
       - ./.env:/app/.env
     stdin_open: true
     tty: true
+    networks:
+      - paper2slides-network
+
+  # FastAPI service
+  paper2slides-api:
+    build:
+      context: .
+      dockerfile: Dockerfile.api
+    ports:
+      - "${API_PORT:-8000}:8000"  # Map host port to container port 8000
+    volumes:
+      - ./api_workspaces:/app/api_workspaces
+      - ./cache:/app/cache
+      - ./source:/app/source
+      - ./.env:/app/.env
+    environment:
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - OPENAI_BASE_URL=${OPENAI_BASE_URL}
+      - DEFAULT_MODEL=${DEFAULT_MODEL:-gpt-4o-2024-11-20}
+    restart: unless-stopped
+    networks:
+      - paper2slides-network
+
+networks:
+  paper2slides-network:
+    driver: bridge
