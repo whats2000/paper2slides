@@ -351,6 +351,7 @@ def generate_slides(
     api_key: str | None = None,
     model_name: str | None = None,
     base_url: str | None = None,
+    workspace_dir: str | None = None,
 ) -> bool:
     """
     Generate slides from an arXiv paper.
@@ -362,6 +363,7 @@ def generate_slides(
         api_key: OpenAI/DashScope API key
         model_name: Model to use for generation
         base_url: Optional base URL for API
+        workspace_dir: Workspace directory path (defaults to source/{arxiv_id}/ if not provided)
         
     Returns:
         True if successful, False otherwise
@@ -370,9 +372,13 @@ def generate_slides(
     if model_name is None:
         model_name = os.getenv("DEFAULT_MODEL", "gpt-4.1-2025-04-14")
 
+    # Determine workspace directory
+    if workspace_dir is None:
+        workspace_dir = f"source/{arxiv_id}/"
+
     # Define paths
     cache_dir = f"cache/{arxiv_id}"
-    tex_files_directory = f"source/{arxiv_id}/"
+    tex_files_directory = workspace_dir
     slides_tex_path = f"{tex_files_directory}slides.tex"
 
     # Create directories if not exist
@@ -436,6 +442,7 @@ def generate_slides_from_pdf(
     dashscope_base_url: str | None = None,
     start_page: int | None = None,
     end_page: int | None = None,
+    workspace_dir: str | None = None,
 ) -> bool:
     """
     Generate slides from a local PDF file (not from arXiv).
@@ -451,6 +458,7 @@ def generate_slides_from_pdf(
         dashscope_base_url: Base URL for DashScope API (overrides env)
         start_page: Starting page number (1-indexed, inclusive). If None, starts from page 1.
         end_page: Ending page number (1-indexed, inclusive). If None, goes to last page.
+        workspace_dir: Workspace directory path (defaults to source/{paper_id}/ if not provided)
         
     Returns:
         True if successful, False otherwise
@@ -464,8 +472,12 @@ def generate_slides_from_pdf(
     if dashscope_base_url:
         os.environ["DASHSCOPE_BASE_URL"] = dashscope_base_url
 
+    # Determine workspace directory
+    if workspace_dir is None:
+        workspace_dir = f"source/{paper_id}/"
+
     # Define paths
-    tex_files_directory = f"source/{paper_id}/"
+    tex_files_directory = workspace_dir
     slides_tex_path = f"{tex_files_directory}slides.tex"
 
     # Create directories if not exist
