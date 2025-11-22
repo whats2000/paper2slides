@@ -61,6 +61,7 @@ stages:
           \\centering
           \\includegraphics[width=0.7\\textwidth,height=0.7\\textheight,keepaspectratio]{{example.png}}
           \\caption{{Only use up to 1 informative sentence here.}}
+          \\label{{fig:example}}
         \\end{{figure}}
       \\end{{frame}}
       ```
@@ -124,6 +125,7 @@ stages:
       - Does the paper include a figure that explains the main ideas of the proposed method? If the paper has one, it would be a good idea to also have it in the slides.
       - If the beamer code uses any figures, is the path correct? Make sure the path, file name, and file extension are equivalent to the information in the paper. For example, if the paper is using `figures/image.png`, we should also use that in our beamer code rather than `image.png`. Similarly, if the paper is using `image.png`, we should also use `image.png` rather than `figures/image.png`. For your information, the original paper uses {figure_paths} for figures. Be extra careful with the file names since you tend to make mistakes.
       - The beamer slides are 16:9 aspect ratio. If you think an equation is too long, we can add new lines to the equation. If it is a very complicated equation, consider removing the equation and try to explain it with natural language. If you think the table might not fit, consider making the font size smaller for the table.
+      - Keep each `\\item` concise that under 15 words per item. If an item is too long or verbose, rewrite it more concisely. Focus on the most important keywords and keep descriptions short. Do not just trim or cut off text, instead rewrite to be more concise while keeping the key information. If a slide has too much text overall or items are still too long after rewriting, split it into multiple frames. For example, if you have 4 items but they're all lengthy sentences, split into 2 slides with 2 items each. Remember: presentations highlight key points, not full explanations.
       - Make sure escape characters are used with a backslash. For example, if you are using ampersand as a regular character, you need to escape it unless you are using it with a special meaning (e.g., using it in alignment in tables and arrays.)
       - If commands such as `\\cite` or `\\bibliography` are used for citation, remove them. We do not have a bib file.
       - If there is a figure in a frame, DON'T use any text other than the caption of the figure. So this means we shouldn't have `itemize` or even a title in a frame with a figure. Having a one-sentence caption is encouraged. Furthermore, use only up to one figure per a frame. An example of using a figure:
@@ -133,6 +135,7 @@ stages:
           \\centering
           \\includegraphics[width={figure_width},height={figure_height},keepaspectratio]{{FIGURE_PATH}}
           \\caption{{Performance trade-off vs. cost.}}
+          \\label{{fig:performance_tradeoff}}
         \\end{{figure}}
       \\end{{frame}}
       ```
@@ -170,6 +173,7 @@ stages:
           \\centering
           \\includegraphics[width={figure_width},height={figure_height},keepaspectratio]{{FIGURE_PATH}}
           \\caption{{Performance trade-off vs. cost.}}
+          \\label{{fig:performance_tradeoff}}
         \\end{{figure}}
       \\end{{frame}}
       ```
