@@ -46,7 +46,11 @@ Copy `.env.example` to `.env` and fill in your API keys and settings.
 
 ## Docker Setup
 
-To avoid installing LaTeX and Python dependencies locally, you can use Docker. The Docker setup uses `uv` for faster and safer Python package installation.
+paper2slides provides Docker images for both the Streamlit web application and the REST API service.
+
+### Streamlit Web App
+
+To avoid installing LaTeX and Python dependencies locally, you can use Docker for the web interface.
 
 1. Ensure Docker is installed on your system.
 
@@ -62,9 +66,9 @@ To avoid installing LaTeX and Python dependencies locally, you can use Docker. T
     # Then edit .env with your keys
     ```
 
-4. Build and run the application using Docker Compose:
+4. Build and run the Streamlit app using Docker Compose:
     ```sh
-    docker-compose up --build
+    docker-compose up paper2slides
     ```
 
    This will start the Streamlit app on `http://localhost:8501`.
@@ -76,6 +80,26 @@ Alternatively, build and run manually:
 docker build -t paper2slides .
 docker run -p 8501:8501 -v $(pwd)/source:/app/source -v $(pwd)/cache:/app/cache -e OPENAI_API_KEY=your-api-key paper2slides
 ```
+
+### REST API Service
+
+For programmatic access or integration with other applications, use the FastAPI service.
+
+1. Build and run the API service:
+    ```sh
+    docker-compose up paper2slides-api -d
+    ```
+
+   This will start the API on `http://localhost:8000`.
+
+2. Access the API documentation at `http://localhost:8000/docs` (Swagger UI) or `http://localhost:8000/redoc` (ReDoc).
+
+3. The API provides endpoints for:
+   - Generating slides from arXiv papers or uploaded PDFs
+   - Tracking job status
+   - Downloading generated slides (PDF/LaTeX)
+   - Editing slides and generating speaker notes
+   - Multi-user workspace isolation
 
 ## Quick Start
 
