@@ -266,6 +266,9 @@ stages:
     template: |
       You are a PhD student preparing to present these research slides. Write speaker notes for ALL slides that capture what you would actually SAY during the presentation.
       
+      User Instructions:
+      "{user_instructions}"
+      
       IMPORTANT Guidelines - Write as if you're SPEAKING:
       - Use first person ("Let me show you...", "I'll explain...", "Notice that...")
       - Write conversational, natural speech ("So here's the key idea...", "Now, what's interesting is...")

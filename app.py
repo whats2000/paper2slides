@@ -1148,6 +1148,16 @@ def main():
                     st.session_state.generating_speaker_notes = True
                     st.rerun()
             
+            # Add optional custom instruction for speaker notes
+            with st.expander("⚙️ Custom Speaker Notes Instructions (Optional)"):
+                st.session_state.speaker_notes_instruction = st.text_area(
+                    "Custom instructions for speaker notes generation:",
+                    value=st.session_state.get("speaker_notes_instruction", ""),
+                    placeholder="e.g., 'Focus on explaining the mathematical intuition' or 'Keep notes brief, under 2 sentences per slide'",
+                    help="Provide custom instructions to guide how the speaker notes should be generated. Leave empty to use default style.",
+                    key="speaker_notes_instruction_input",
+                )
+            
             with col_dl_notes:
                 # Check if speaker notes exist
                 notes_file = f"source/{st.session_state.paper_id}/speaker_notes.json"
@@ -1191,6 +1201,7 @@ def main():
                         st.session_state.openai_api_key,
                         st.session_state.model_name,
                         st.session_state.openai_base_url if st.session_state.openai_base_url else None,
+                        instruction=st.session_state.get("speaker_notes_instruction", ""),
                     )
                     
                     if speaker_notes:

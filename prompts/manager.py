@@ -251,6 +251,7 @@ class PromptManager:
         elif stage == "generate_speaker_notes":
             variables["beamer_code"] = beamer_code
             variables["latex_source"] = latex_source
+            variables["user_instructions"] = user_instructions
 
         system_message = self.get_system_message(stage)
         user_prompt = self.get_prompt(stage, **variables)

@@ -523,6 +523,7 @@ def generate_speaker_notes(
     api_key: str,
     model_name: str,
     base_url: str | None = None,
+    instruction: str = "",
 ) -> dict[int, str] | None:
     """
     Generate speaker notes for all slides in a presentation using a single LLM call.
@@ -532,6 +533,7 @@ def generate_speaker_notes(
         api_key: API key for LLM
         model_name: Model name to use
         base_url: Optional base URL for API
+        instruction: Optional custom instruction for speaker note generation
         
     Returns:
         Dictionary mapping frame number to speaker notes, or None on error
@@ -566,7 +568,10 @@ def generate_speaker_notes(
         stage="generate_speaker_notes",
         beamer_code=beamer_code,
         latex_source=latex_source,
+        user_instructions=instruction,
     )
+
+    print(user_prompt)
 
     try:
         # For speaker notes, we need the raw response text, not extracted code
