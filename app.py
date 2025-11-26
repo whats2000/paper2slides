@@ -240,7 +240,7 @@ def get_arxiv_id_from_query(query: str) -> str | None:
     return None
 
 
-def run_generate_step(paper_id: str, api_key: str, model_name: str, pdf_path: str | None = None, start_page: int | None = None, end_page: int | None = None) -> bool:
+def run_generate_step(paper_id: str, api_key: str, model_name: str, pdf_path: str | None = None, start_page: int | None = None, end_page: int | None = None, use_linter: bool = False) -> bool:
     """
     Step 1: Generate slides from arXiv paper or local PDF
     
@@ -251,6 +251,7 @@ def run_generate_step(paper_id: str, api_key: str, model_name: str, pdf_path: st
         pdf_path: Path to uploaded PDF file (None for arXiv papers)
         start_page: Starting page number (1-indexed, inclusive) for PDF processing
         end_page: Ending page number (1-indexed, inclusive) for PDF processing
+        use_linter: Whether to enable the linter for auto-fixing LaTeX issues (default False)
     """
     logging.info("=" * 60)
     if pdf_path:
@@ -265,7 +266,7 @@ def run_generate_step(paper_id: str, api_key: str, model_name: str, pdf_path: st
         success = generate_slides_from_pdf(
             pdf_path=pdf_path,
             paper_id=paper_id,
-            use_linter=False,
+            use_linter=use_linter,
             use_pdfcrop=False,
             api_key=api_key,
             model_name=model_name,
@@ -276,7 +277,7 @@ def run_generate_step(paper_id: str, api_key: str, model_name: str, pdf_path: st
     else:
         success = generate_slides(
             arxiv_id=paper_id,
-            use_linter=False,
+            use_linter=use_linter,
             use_pdfcrop=False,
             api_key=api_key,
             model_name=model_name,
@@ -367,7 +368,7 @@ def run_full_pipeline(
     logging.info("=" * 60)
 
     # Step 1: Generate slides
-    if not run_generate_step(paper_id, api_key, model_name, pdf_path, start_page, end_page):
+    if not run_generate_step(paper_id, api_key, model_name, pdf_path, start_page, end_page, use_linter=True):
         logging.error("Pipeline failed at slide generation step")
         return False
 
