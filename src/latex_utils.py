@@ -120,9 +120,50 @@ def sanitize_frametitles(beamer_code: str) -> str:
     Escapes unescaped ampersands inside \frametitle and its arguments.
     Also sanitizes titles provided via \begin{frame}{...} with optional [options].
     Handles <...>, [...], and {...} arguments with optional whitespace.
+    
+    Additionally fixes common LaTeX syntax errors that LLMs tend to produce,
+    such as \\end{frame> instead of \\end{frame}.
+    
+    Also ensures commonly needed packages are loaded (booktabs, multirow)
+    and defines common math macros (\\bx, \\by) if not already defined.
     """
     if not beamer_code:
         return ""
+
+    # Fix common LLM errors: \end{...> and \begin{...> where > should be }
+    beamer_code = re.sub(r'\\end\{([^}]+)>', r'\\end{\1}', beamer_code)
+    beamer_code = re.sub(r'\\begin\{([^}]+)>', r'\\begin{\1}', beamer_code)
+
+    # Ensure commonly needed packages are loaded after \documentclass
+    # These are often used by LLMs but not explicitly loaded
+    packages_to_ensure = []
+    
+    # Check for booktabs commands (\toprule, \midrule, \bottomrule, \cmidrule)
+    if re.search(r'\\(toprule|midrule|bottomrule|cmidrule)', beamer_code):
+        if '\\usepackage{booktabs}' not in beamer_code and '\\usepackage[' not in beamer_code or 'booktabs' not in beamer_code:
+            packages_to_ensure.append('\\usepackage{booktabs}')
+    
+    # Check for \multirow command
+    if '\\multirow' in beamer_code:
+        if '\\usepackage{multirow}' not in beamer_code:
+            packages_to_ensure.append('\\usepackage{multirow}')
+    
+    # Check for \bx, \by (common bold vector macros) - define them if not present
+    math_macros = []
+    if '\\bx' in beamer_code and '\\newcommand{\\bx}' not in beamer_code and '\\def\\bx' not in beamer_code:
+        math_macros.append('\\providecommand{\\bx}{\\mathbf{x}}')
+    if '\\by' in beamer_code and '\\newcommand{\\by}' not in beamer_code and '\\def\\by' not in beamer_code:
+        math_macros.append('\\providecommand{\\by}{\\mathbf{y}}')
+    
+    # Insert packages and macros after \documentclass line
+    if packages_to_ensure or math_macros:
+        additions = '\n'.join(packages_to_ensure + math_macros)
+        # Find position after \documentclass{beamer} or \documentclass[...]{beamer}
+        docclass_pattern = re.compile(r'(\\documentclass(?:\[[^\]]*\])?\{beamer\})')
+        match = docclass_pattern.search(beamer_code)
+        if match:
+            insert_pos = match.end()
+            beamer_code = beamer_code[:insert_pos] + '\n' + additions + beamer_code[insert_pos:]
 
     # 1) Sanitize titles in \begin{frame}[opts]{Title}
     def repl_frame(match):
