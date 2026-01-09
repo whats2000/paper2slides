@@ -213,7 +213,7 @@ def display_pdf_as_images(file_path: str, paper_id: str = None, enable_inline_ed
             if edited_notes != current_notes:
                 if st.button("💾 Save Notes", key=f"save_notes_{page_num}"):
                     speaker_notes[page_num] = edited_notes
-                    if save_speaker_notes(paper_id, speaker_notes):
+                    if save_speaker_notes(speaker_notes, paper_id):
                         st.success("Notes saved!")
                         st.rerun()
                     else:
@@ -1206,7 +1206,7 @@ def main():
                     )
                     
                     if speaker_notes:
-                        if save_speaker_notes(st.session_state.paper_id, speaker_notes):
+                        if save_speaker_notes(speaker_notes, st.session_state.paper_id):
                             st.success(f"✅ Speaker notes generated successfully for {len(speaker_notes)} slides!")
                             st.rerun()
                         else:
