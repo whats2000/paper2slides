@@ -62,6 +62,24 @@ services:
     command: tail -f /dev/null
     restart: unless-stopped
 
+  # YOLO11 Document Layout service for ML-based figure extraction
+  yolo11-doc-layout:
+    image: paper2slides-yolo11-doc-layout:latest
+    build:
+      context: .
+      dockerfile: Dockerfile.yolo11-doc-layout
+    volumes:
+      - ./cache:/data/cache
+      - ./source:/data/source
+      - ./demo:/data/demo
+      - ./test_output:/data/test_output
+    networks:
+      - paper2slides-network
+    # YOLO11 is a CLI tool, not a service - use 'docker-compose exec' to run it
+    # Keep container running for exec commands
+    command: tail -f /dev/null
+    restart: unless-stopped
+
 networks:
   paper2slides-network:
     driver: bridge

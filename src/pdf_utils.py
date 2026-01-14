@@ -74,6 +74,31 @@ def _check_pdffigures2_available() -> bool:
     return False
 
 
+def _check_yolo11_available() -> bool:
+    """
+    Check if YOLO11 Document Layout is available via Docker.
+    
+    Returns:
+        True if YOLO11 Document Layout Docker service is running
+    """
+    # Check if Docker is available with yolo11-doc-layout service
+    try:
+        result = subprocess.run(
+            ["docker-compose", "ps", "--services", "--filter", "status=running"],
+            capture_output=True,
+            text=True,
+            timeout=5
+        )
+        if result.returncode == 0 and "yolo11-doc-layout" in result.stdout:
+            logging.info("YOLO11 Document Layout Docker service is available")
+            return True
+    except (subprocess.TimeoutExpired, FileNotFoundError):
+        pass
+    
+    logging.info("YOLO11 Document Layout not available")
+    return False
+
+
 def _extract_images_with_pdffigures2(pdf_path: str, output_dir: str) -> list[str]:
     """
     Extract images using pdffigures2 via Docker.
@@ -195,10 +220,97 @@ def _extract_images_with_pdffigures2(pdf_path: str, output_dir: str) -> list[str
         return []
 
 
+def _extract_images_with_yolo11(pdf_path: str, output_dir: str, start_page: int | None = None, end_page: int | None = None) -> list[str]:
+    """
+    Extract images using YOLO11 document layout model via Docker.
+    
+    Args:
+        pdf_path: Path to the PDF file (host path)
+        output_dir: Directory to save extracted images (host path)
+        start_page: Starting page number (1-indexed, inclusive)
+        end_page: Ending page number (1-indexed, inclusive)
+        
+    Returns:
+        List of relative paths to extracted images
+    """
+    try:
+        # Convert host paths to Docker container paths
+        workspace_root = Path.cwd()
+        pdf_path_abs = Path(pdf_path).resolve()
+        output_abs = Path(output_dir).resolve()
+        
+        try:
+            pdf_rel = pdf_path_abs.relative_to(workspace_root)
+            # Use forward slashes for Docker paths
+            docker_pdf_path = f"/data/{pdf_rel.as_posix()}"
+            
+            output_rel = output_abs.relative_to(workspace_root)
+            # Use forward slashes for Docker paths  
+            docker_output_dir = f"/data/{output_rel.as_posix()}"
+        except ValueError:
+            logging.error("PDF or output path is outside workspace, cannot use Docker")
+            return []
+        
+        # Build the command
+        cmd = [
+            "docker-compose", "exec", "-T", "yolo11-doc-layout",
+            "python", "/app/yolo11_doc_layout_extract.py",
+            docker_pdf_path,
+            docker_output_dir
+        ]
+        
+        # Add optional page range arguments
+        if start_page is not None:
+            cmd.append(str(start_page))
+            if end_page is not None:
+                cmd.append(str(end_page))
+        
+        logging.info(f"Running YOLO11 via Docker: {docker_pdf_path}")
+        
+        result = subprocess.run(
+            cmd,
+            capture_output=True,
+            text=True,
+            encoding='utf-8',
+            errors='replace',
+            timeout=300  # 5 minutes for longer papers
+        )
+        
+        if result.returncode != 0:
+            logging.warning(f"YOLO11 extraction failed: {result.stderr}")
+            return []
+        
+        # Parse JSON output
+        try:
+            result_data = json.loads(result.stdout)
+        except json.JSONDecodeError as e:
+            logging.error(f"Failed to parse YOLO11 output: {e}")
+            logging.debug(f"Output was: {result.stdout}")
+            return []
+        
+        if not result_data.get("success", False):
+            logging.warning(f"YOLO11 extraction failed: {result_data.get('error', 'Unknown error')}")
+            return []
+        
+        # Extract relative paths from results
+        image_paths = [fig["relative_path"] for fig in result_data.get("figures", [])]
+        
+        logging.info(f"YOLO11 extracted {result_data.get('total_figures', 0)} figures from {result_data.get('pages_processed', 'all')} pages")
+        
+        return image_paths
+        
+    except subprocess.TimeoutExpired:
+        logging.error("YOLO11 extraction timed out")
+        return []
+    except Exception as e:
+        logging.error(f"Error running YOLO11: {e}")
+        return []
+
+
 def extract_images_from_pdf(pdf_path: str, output_dir: str, start_page: int | None = None, end_page: int | None = None) -> list[str]:
     """
-    Extract images from a PDF file. Uses pdffigures2 if available for better figure detection,
-    otherwise falls back to PyMuPDF.
+    Extract images from a PDF file. Uses YOLO11 for ML-based figure detection if available,
+    otherwise tries pdffigures2, and finally falls back to PyMuPDF.
     
     Args:
         pdf_path: Path to the PDF file
@@ -209,19 +321,32 @@ def extract_images_from_pdf(pdf_path: str, output_dir: str, start_page: int | No
     Returns:
         List of relative paths to extracted images
     """
-    # Try pdffigures2 first if no page range is specified (pdffigures2 doesn't support page ranges)
+    # Try YOLO11 first (best accuracy with ML-based detection)
+    if _check_yolo11_available():
+        try:
+            result = _extract_images_with_yolo11(pdf_path, output_dir, start_page, end_page)
+            if result:
+                logging.info(f"Successfully extracted {len(result)} figures using YOLO11")
+                return result
+            else:
+                logging.info("YOLO11 returned no results, falling back to pdffigures2")
+        except Exception as e:
+            logging.warning(f"YOLO11 extraction failed: {e}, falling back to pdffigures2")
+    
+    # Try pdffigures2 if no page range is specified (pdffigures2 doesn't support page ranges)
     if start_page is None and end_page is None:
         if _check_pdffigures2_available():
             try:
                 result = _extract_images_with_pdffigures2(pdf_path, output_dir)
                 if result:
+                    logging.info(f"Successfully extracted {len(result)} figures using pdffigures2")
                     return result
                 else:
                     logging.info("pdffigures2 returned no results, falling back to PyMuPDF")
             except Exception as e:
                 logging.warning(f"pdffigures2 extraction failed: {e}, falling back to PyMuPDF")
     else:
-        logging.info("Page range specified, using PyMuPDF for extraction")
+        logging.info("Page range specified, skipping pdffigures2 (doesn't support page ranges)")
     
     # Fallback to original PyMuPDF implementation
     logging.info("Using PyMuPDF for image extraction")

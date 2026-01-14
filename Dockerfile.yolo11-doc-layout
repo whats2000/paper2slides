@@ -1,0 +1,45 @@
+# Dockerfile for YOLO11 Document Layout Analysis
+FROM python:3.11-slim
+
+# Install system dependencies
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
+    libglib2.0-0 \
+    libsm6 \
+    libxext6 \
+    libxrender-dev \
+    libgomp1 \
+    libgl1 \
+    && rm -rf /var/lib/apt/lists/*
+
+# Set working directory
+WORKDIR /app
+
+# Install Python dependencies
+RUN pip install --no-cache-dir \
+    ultralytics>=8.0.0 \
+    huggingface-hub>=0.20.0 \
+    pymupdf>=1.23.0 \
+    pillow>=10.0.0 \
+    numpy>=1.24.0 \
+    opencv-python-headless>=4.8.0
+
+# Create directory for models and data
+RUN mkdir -p /app/models /data
+
+# Pre-download the YOLO11 nano model (recommended for speed/accuracy balance)
+RUN python -c "from huggingface_hub import hf_hub_download; \
+    from pathlib import Path; \
+    model_path = hf_hub_download( \
+        repo_id='Armaggheddon/yolo11-document-layout', \
+        filename='yolo11n_doc_layout.pt', \
+        repo_type='model', \
+        local_dir='/app/models' \
+    ); \
+    print(f'Model downloaded to: {model_path}')"
+
+# Copy the inference script
+COPY docker_scripts/yolo11_doc_layout_extract.py /app/yolo11_doc_layout_extract.py
+
+# Keep container running
+CMD ["tail", "-f", "/dev/null"]
