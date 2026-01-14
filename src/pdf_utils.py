@@ -2,6 +2,9 @@
 
 import logging
 import hashlib
+import subprocess
+import json
+import shutil
 from pathlib import Path
 from PIL import Image
 import io
@@ -46,9 +49,156 @@ def extract_text_from_pdf(pdf_path: str, start_page: int | None = None, end_page
         raise
 
 
+def _check_pdffigures2_available() -> bool:
+    """
+    Check if pdffigures2 is available via Docker.
+    
+    Returns:
+        True if pdffigures2 Docker service is running
+    """
+    # Check if Docker is available with pdffigures2 service
+    try:
+        result = subprocess.run(
+            ["docker-compose", "ps", "--services", "--filter", "status=running"],
+            capture_output=True,
+            text=True,
+            timeout=5
+        )
+        if result.returncode == 0 and "pdffigures2" in result.stdout:
+            logging.info("pdffigures2 Docker service is available")
+            return True
+    except (subprocess.TimeoutExpired, FileNotFoundError):
+        pass
+    
+    logging.info("pdffigures2 not available, falling back to PyMuPDF")
+    return False
+
+
+def _extract_images_with_pdffigures2(pdf_path: str, output_dir: str) -> list[str]:
+    """
+    Extract images using pdffigures2 via Docker.
+    
+    Args:
+        pdf_path: Path to the PDF file (host path)
+        output_dir: Directory to save extracted images (host path)
+        
+    Returns:
+        List of relative paths to extracted images
+    """
+    figures_dir = Path(output_dir) / "figures"
+    figures_dir.mkdir(parents=True, exist_ok=True)
+    
+    # Create a temporary directory for pdffigures2 output
+    temp_output_dir = Path(output_dir) / "temp_pdffigures2"
+    temp_output_dir.mkdir(parents=True, exist_ok=True)
+    
+    metadata_file = temp_output_dir / "figures.json"
+    
+    try:
+        # Convert host paths to Docker container paths
+        # Docker volumes are mounted in docker-compose.yml:
+        # - ./source:/data/source
+        # - ./cache:/data/cache
+        workspace_root = Path.cwd()
+        pdf_path_abs = Path(pdf_path).resolve()
+        temp_output_abs = temp_output_dir.resolve()
+        
+        try:
+            pdf_rel = pdf_path_abs.relative_to(workspace_root)
+            docker_pdf_path = f"/data/{pdf_rel.as_posix()}"
+            
+            output_rel = temp_output_abs.relative_to(workspace_root)
+            docker_output_dir = f"/data/{output_rel.as_posix()}"
+        except ValueError:
+            logging.error("PDF or output path is outside workspace, cannot use Docker")
+            return []
+        
+        # Ensure the temp directory exists in the container
+        subprocess.run(
+            ["docker-compose", "exec", "-T", "pdffigures2", "mkdir", "-p", docker_output_dir],
+            capture_output=True,
+            timeout=10
+        )
+        
+        # Run pdffigures2 in the Docker container
+        # The JAR is already at /app/pdffigures2.jar inside the container
+        # -m (--figure-prefix) and -d (--figure-data-prefix) are PREFIXES, not directories!
+        # They should end with a trailing slash to specify a directory prefix
+        cmd = [
+            "docker-compose", "exec", "-T", "pdffigures2",
+            "java", "-jar", "/app/pdffigures2.jar",
+            docker_pdf_path,
+            "-d", f"{docker_output_dir}/",
+            "-m", f"{docker_output_dir}/"
+        ]
+        
+        logging.info(f"Running pdffigures2 via Docker: {docker_pdf_path}")
+        
+        result = subprocess.run(
+            cmd,
+            capture_output=True,
+            text=True,
+            timeout=60
+        )
+        
+        if result.returncode != 0:
+            logging.warning(f"pdffigures2 failed: {result.stderr}")
+            return []
+        
+        logging.info("pdffigures2 extraction completed successfully")
+        
+        # Parse the JSON metadata - pdffigures2 creates filename.json in the output directory
+        # Look for JSON files in the temp directory
+        json_files = list(temp_output_dir.glob("*.json"))
+        if not json_files:
+            logging.warning("pdffigures2 metadata file not found")
+            return []
+        
+        metadata_file = json_files[0]  # Use the first JSON file found
+        
+        with open(metadata_file, 'r', encoding='utf-8') as f:
+            figures_data = json.load(f)
+        
+        image_paths = []
+        
+        # Get all PNG files from temp directory
+        all_png_files = sorted(temp_output_dir.glob("*.png"))
+        
+        # Move extracted figures to the figures directory with cleaner names
+        for idx, (figure, png_file) in enumerate(zip(figures_data, all_png_files)):
+            figure_type = figure.get('figType', 'Figure')
+            caption = figure.get('caption', '')
+            
+            # Copy to figures directory with a cleaner name
+            new_filename = f"figure_{idx:03d}.png"
+            dest_path = figures_dir / new_filename
+            shutil.copy2(png_file, dest_path)
+            
+            relative_path = f"figures/{new_filename}"
+            image_paths.append(relative_path)
+            
+            logging.info(f"Extracted {figure_type}: {relative_path}")
+            if caption:
+                logging.debug(f"  Caption: {caption[:100]}...")
+        
+        # Clean up temp directory
+        shutil.rmtree(temp_output_dir, ignore_errors=True)
+        
+        logging.info(f"Total figures extracted with pdffigures2: {len(image_paths)}")
+        return image_paths
+        
+    except subprocess.TimeoutExpired:
+        logging.error("pdffigures2 timed out")
+        return []
+    except Exception as e:
+        logging.error(f"Error running pdffigures2: {e}")
+        return []
+
+
 def extract_images_from_pdf(pdf_path: str, output_dir: str, start_page: int | None = None, end_page: int | None = None) -> list[str]:
     """
-    Extract images from a PDF file using PyMuPDF and save them to the output directory.
+    Extract images from a PDF file. Uses pdffigures2 if available for better figure detection,
+    otherwise falls back to PyMuPDF.
     
     Args:
         pdf_path: Path to the PDF file
@@ -59,6 +209,22 @@ def extract_images_from_pdf(pdf_path: str, output_dir: str, start_page: int | No
     Returns:
         List of relative paths to extracted images
     """
+    # Try pdffigures2 first if no page range is specified (pdffigures2 doesn't support page ranges)
+    if start_page is None and end_page is None:
+        if _check_pdffigures2_available():
+            try:
+                result = _extract_images_with_pdffigures2(pdf_path, output_dir)
+                if result:
+                    return result
+                else:
+                    logging.info("pdffigures2 returned no results, falling back to PyMuPDF")
+            except Exception as e:
+                logging.warning(f"pdffigures2 extraction failed: {e}, falling back to PyMuPDF")
+    else:
+        logging.info("Page range specified, using PyMuPDF for extraction")
+    
+    # Fallback to original PyMuPDF implementation
+    logging.info("Using PyMuPDF for image extraction")
     try:
         doc = fitz.open(pdf_path)
         total_pages = len(doc)

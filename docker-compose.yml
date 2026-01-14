@@ -44,6 +44,24 @@ services:
     networks:
       - paper2slides-network
 
+  # pdffigures2 service for basic figure extraction
+  pdffigures2:
+    image: paper2slides-pdffigures2:latest
+    build:
+      context: .
+      dockerfile: Dockerfile.pdffigures2
+    volumes:
+      - ./cache:/data/cache
+      - ./source:/data/source
+      - ./demo:/data/demo
+      - ./test_output:/data/test_output
+    networks:
+      - paper2slides-network
+    # pdffigures2 is a CLI tool, not a service - use 'docker-compose run' to execute it
+    # Keep container running for exec commands
+    command: tail -f /dev/null
+    restart: unless-stopped
+
 networks:
   paper2slides-network:
     driver: bridge

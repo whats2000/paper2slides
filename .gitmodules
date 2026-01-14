@@ -1,0 +1,3 @@
+[submodule "third_party/pdffigures2"]
+	path = third_party/pdffigures2
+	url = https://github.com/allenai/pdffigures2.git
