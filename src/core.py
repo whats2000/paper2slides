@@ -483,13 +483,24 @@ def generate_slides_from_pdf(
     # Create directories if not exist
     os.makedirs(tex_files_directory, exist_ok=True)
 
+    # Copy the original PDF to the workspace first (needed for Docker access)
+    try:
+        dest_pdf = Path(tex_files_directory) / "original_paper.pdf"
+        shutil.copy2(pdf_path, dest_pdf)
+        logging.info(f"Copied original PDF to {dest_pdf}")
+        # Use the workspace copy for all subsequent operations
+        pdf_path_for_processing = str(dest_pdf)
+    except Exception as e:
+        logging.warning(f"Failed to copy original PDF: {e}")
+        pdf_path_for_processing = pdf_path
+
     # Extract text from PDF
-    logging.info(f"Extracting text from PDF: {pdf_path}")
+    logging.info(f"Extracting text from PDF: {pdf_path_for_processing}")
     if start_page or end_page:
         page_range_msg = f" (pages {start_page or 1} to {end_page or 'end'})"
         logging.info(f"Using page range: {page_range_msg}")
     try:
-        pdf_text = extract_text_from_pdf(pdf_path, start_page, end_page)
+        pdf_text = extract_text_from_pdf(pdf_path_for_processing, start_page, end_page)
         if not pdf_text.strip():
             logging.error("No text content extracted from PDF. The PDF might be image-based or empty.")
             return False
@@ -498,9 +509,9 @@ def generate_slides_from_pdf(
         return False
 
     # Extract images from PDF
-    logging.info(f"Extracting images from PDF: {pdf_path}")
+    logging.info(f"Extracting images from PDF: {pdf_path_for_processing}")
     try:
-        figure_paths = extract_images_from_pdf(pdf_path, tex_files_directory, start_page, end_page)
+        figure_paths = extract_images_from_pdf(pdf_path_for_processing, tex_files_directory, start_page, end_page)
         if figure_paths:
             logging.info(f"Successfully extracted {len(figure_paths)} images from PDF")
         else:
@@ -508,14 +519,6 @@ def generate_slides_from_pdf(
     except Exception as e:
         logging.warning(f"Failed to extract images from PDF: {e}")
         figure_paths = []
-
-    # Copy the original PDF to the source directory for reference
-    try:
-        dest_pdf = Path(tex_files_directory) / "original_paper.pdf"
-        shutil.copy2(pdf_path, dest_pdf)
-        logging.info(f"Copied original PDF to {dest_pdf}")
-    except Exception as e:
-        logging.warning(f"Failed to copy original PDF: {e}")
 
     # Create a minimal ADDITIONAL.tex (no LaTeX source to extract from)
     add_tex_contents = build_additional_tex([])
