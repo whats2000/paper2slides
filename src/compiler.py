@@ -299,7 +299,8 @@ def try_compile_with_fixes(
             temp_file = f"{tex_files_directory}slides_temp{ext}"
             if Path(temp_file).exists():
                 Path(temp_file).unlink()
-    except Exception:
-        pass
+    except Exception as e:
+        # Cleanup errors are non-fatal but logged for diagnostics
+        logging.debug("Failed to clean up temp files in %s: %s", tex_files_directory, e)
     
     return None
