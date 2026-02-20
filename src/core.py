@@ -607,7 +607,7 @@ def generate_speaker_notes(
         user_instructions=instruction,
     )
 
-    print(user_prompt)
+    logging.debug("LLM user prompt for speaker notes:\n%s", user_prompt)
 
     try:
         # For speaker notes, we need the raw response text, not extracted code
