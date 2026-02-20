@@ -213,7 +213,24 @@ def try_compile_with_fixes(
         
         # Run pdflatex twice on temp file
         command = [pdflatex_path, "-interaction=nonstopmode", "slides_temp.tex"]
-        run_result = subprocess.run(command, cwd=tex_files_directory, capture_output=True, text=True, encoding='utf-8', errors='replace')
+        try:
+            run_result = subprocess.run(
+                command,
+                cwd=tex_files_directory,
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+                timeout=300,
+            )
+        except subprocess.TimeoutExpired as e:
+            logging.error(f"pdflatex compilation timed out after 300 seconds: {e}")
+            run_result = subprocess.CompletedProcess(
+                args=command,
+                returncode=1,
+                stdout="",
+                stderr=str(e),
+            )
         
         # Check if PDF was created
         temp_pdf_path = f"{tex_files_directory}slides_temp.pdf"
