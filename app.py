@@ -42,7 +42,6 @@ def extract_title_from_latex(latex_file_path: str) -> str:
             content = f.read()
         
         # Look for \title command
-        import re
         title_match = re.search(r'\\title(?:\[[^\]]*\])?\{([^}]+)\}', content)
         if title_match:
             title = title_match.group(1)
